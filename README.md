@@ -64,8 +64,8 @@ LinkSight/
 │       ├── db/                # SQLite schema + store
 │       └── agent/             # LinkSight Agent abstraction (future)
 ├── docker/                    # Reproducible dev environment
-│   ├── Dockerfile.dev
-│   └── docker-compose.yml
+│   ├── dockerfile
+│   └── compose.yaml
 ├── scripts/                   # setup · dev · build · test · release
 └── .github/workflows/         # CI + Release (AppImage / deb / rpm)
 ```
@@ -93,16 +93,23 @@ the Tauri Linux system dependencies (`libwebkit2gtk-4.1-dev`, `libgtk-3-dev`, �
 ### Run with Docker (recommended)
 
 ```bash
-./run.sh dev      # build image, start container, drop into a shell
-# inside the container:
-./scripts/setup.sh
-./scripts/dev.sh  # launches the app with hot reload
+./run.sh dev      # Rebuild image (Linux deps) + setup (npm/cargo) + Tauri app
 ```
+
+- **Linux 系統套件**（`ip`、`nmap`、WebKit/GTK…）→ 寫在 `docker/dockerfile`，改動後需 rebuild
+- **專案依賴**（`npm install`、`cargo fetch`）→ 測試時由 `scripts/setup.sh` 一次性安裝
 
 Stop the environment:
 
 ```bash
+# Ctrl+C stops the dev server; then:
 ./run.sh down
+```
+
+Need a shell inside the container for debugging?
+
+```bash
+./run.sh shell
 ```
 
 ### Run on the host

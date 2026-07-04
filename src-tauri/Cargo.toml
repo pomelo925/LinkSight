@@ -30,6 +30,12 @@ anyhow = "1"
 uuid = { version = "1", features = ["v4"] }
 chrono = { version = "0.4", features = ["serde"] }
 
+# HTTP client for the internet speed test (Cloudflare speed endpoints).
+# `stream` enables chunked download/upload for real-time progress reporting.
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "stream"] }
+futures-util = "0.3"
+bytes = "1"
+
 # Local storage
 sqlx = { version = "0.8", features = ["runtime-tokio", "sqlite", "chrono"] }
 
@@ -38,15 +44,9 @@ log = "0.4"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
-# --- Future (Advanced Mode / Agent) ------------------------------------------
-# SSH session management will use `russh`. Left out of the default build until
-# the ssh module is implemented, to keep compile times fast during scaffolding.
-# russh = "0.45"
-# russh-keys = "0.45"
-
-[features]
-# Enable to compile the (future) SSH client backend.
-ssh = []
+# SSH client — host verification and (future) remote sessions.
+# `ring` backend instead of the default `aws-lc-rs` to avoid a cmake build dep.
+russh = { version = "0.61", default-features = false, features = ["ring", "flate2", "rsa"] }
 
 [profile.release]
 panic = "abort"

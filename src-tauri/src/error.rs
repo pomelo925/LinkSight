@@ -24,7 +24,7 @@ pub enum LinkSightError {
 /// Serialize errors as their display string so the frontend receives a clean
 /// message from a rejected `invoke`.
 impl Serialize for LinkSightError {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
     where
         S: serde::Serializer,
     {

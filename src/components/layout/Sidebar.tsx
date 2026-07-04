@@ -2,18 +2,21 @@ import { NavLink } from "react-router-dom";
 import { motion } from "framer-motion";
 import {
   Activity,
-  LayoutDashboard,
+  Home,
+  Server,
   Radar,
   TerminalSquare,
   Gauge,
+  Zap,
   Settings,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const NAV_ITEMS = [
-  { to: "/", label: "Dashboard", icon: LayoutDashboard, end: true },
-  { to: "/network", label: "Network Test", icon: Activity },
+  { to: "/", label: "Home", icon: Home, end: true },
+  { to: "/hosts", label: "Hosts", icon: Server },
   { to: "/scan", label: "LAN Scan", icon: Radar },
+  { to: "/speedtest", label: "Speed Test", icon: Zap },
   { to: "/bandwidth", label: "Bandwidth", icon: Gauge },
   { to: "/terminal", label: "Terminal", icon: TerminalSquare },
   { to: "/settings", label: "Settings", icon: Settings },
@@ -21,7 +24,7 @@ const NAV_ITEMS = [
 
 export function Sidebar() {
   return (
-    <aside className="flex h-full w-60 shrink-0 flex-col border-r border-border bg-card/50 backdrop-blur">
+    <aside className="flex h-full w-60 shrink-0 flex-col border-r border-border bg-card">
       <div className="flex items-center gap-2 px-6 py-5">
         <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
           <Activity className="h-5 w-5" />
@@ -45,7 +48,8 @@ export function Sidebar() {
                   <motion.div
                     layoutId="sidebar-active"
                     className="absolute inset-0 rounded-lg bg-primary"
-                    transition={{ type: "spring", stiffness: 400, damping: 32 }}
+                    transition={{ duration: 0.18, ease: "easeOut" }}
+                    style={{ willChange: "transform" }}
                   />
                 )}
                 <Icon className="relative z-10 h-4 w-4" />

@@ -1,0 +1,76 @@
+################################################################################
+# LinkSight - development image
+#
+# Linux system packages are baked in here (rebuild to update).
+# Project deps (npm / cargo crates) are installed at test time via setup.sh.
+################################################################################
+
+FROM ubuntu:22.04 AS base
+
+LABEL org.opencontainers.image.title="LinkSight"
+LABEL org.opencontainers.image.description="Linux-first network diagnostics & connectivity analysis desktop app"
+LABEL org.opencontainers.image.authors="pomelo925"
+LABEL org.opencontainers.image.licenses="MIT"
+
+ENV DEBIAN_FRONTEND=noninteractive
+ENV LANG=C.UTF-8
+ENV LC_ALL=C.UTF-8
+SHELL ["/bin/bash", "-c"]
+
+# ---- Linux system dependencies (Tauri, network tools, dev utilities) ---------
+RUN apt-get update && apt-get install -q -y --no-install-recommends \
+    ca-certificates curl wget git file sudo gnupg2 pkg-config build-essential \
+    unzip xz-utils \
+    libwebkit2gtk-4.1-dev libwebkit2gtk-4.1-0 libjavascriptcoregtk-4.1-0 \
+    libgtk-3-dev libgtk-3-0 \
+    libayatana-appindicator3-dev libayatana-appindicator3-1 \
+    librsvg2-dev librsvg2-2 \
+    libssl-dev libssl3 libxdo-dev libxdo3 \
+    patchelf desktop-file-utils \
+    libgdk-pixbuf-2.0-0 libcairo2 libpango-1.0-0 \
+    libatk1.0-0 libatk-bridge2.0-0 libglib2.0-0 libglib2.0-dev \
+    libgstreamer1.0-0 libgstreamer-plugins-base1.0-0 \
+    dbus-x11 at-spi2-core \
+    libcanberra-gtk3-module libcanberra-gtk-module \
+    libgl1-mesa-dri libgl1 \
+    iproute2 iputils-ping traceroute nmap iperf3 openssh-client \
+    net-tools dnsutils arping \
+    sqlite3 libsqlite3-dev \
+    psmisc lsof \
+    && rm -rf /var/lib/apt/lists/*
+
+################################################################################
+# Toolchain - Node.js + Rust + Tauri CLI (required to compile/run the app)
+################################################################################
+FROM base AS toolchain
+
+ENV NODE_MAJOR=20
+RUN curl -fsSL https://deb.nodesource.com/setup_${NODE_MAJOR}.x | bash - \
+    && apt-get install -y --no-install-recommends nodejs \
+    && rm -rf /var/lib/apt/lists/*
+
+ENV RUSTUP_HOME=/usr/local/rustup \
+    CARGO_HOME=/usr/local/cargo \
+    PATH=/usr/local/cargo/bin:$PATH
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
+        | sh -s -- -y --no-modify-path --default-toolchain stable \
+    && rustup component add rustfmt clippy \
+    && cargo install tauri-cli --version "^2.0.0" --locked
+
+################################################################################
+# Dev stage
+################################################################################
+FROM toolchain AS dev
+
+WORKDIR /workspace
+
+ENV CARGO_TARGET_DIR=/workspace/src-tauri/target
+ENV NO_AT_BRIDGE=1
+ENV GTK_MODULES=
+ENV LIBGL_ALWAYS_SOFTWARE=1
+# WebKitGTK rendering fixes for GPU-less containers (avoid slow software paths)
+ENV WEBKIT_DISABLE_DMABUF_RENDERER=1
+ENV WEBKIT_DISABLE_COMPOSITING_MODE=1
+
+EXPOSE 1420
+CMD ["/bin/bash"]

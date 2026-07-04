@@ -1,19 +1,14 @@
 import { PageHeader } from "@/components/layout/PageHeader";
-import { Card, CardContent } from "@/components/ui/card";
+import { ScanTest } from "@/features/network/ScanTest";
 
 export function Scan() {
   return (
     <div>
       <PageHeader
         title="LAN Scan"
-        description="Discover devices on the local network (nmap wrapper)."
+        description="Discover devices on the local network (nmap, ping-sweep fallback)."
       />
-      <Card>
-        <CardContent className="py-10 text-center text-sm text-muted-foreground">
-          LAN discovery is scaffolded in the backend
-          (<code>src-tauri/src/network/scan.rs</code>) and will surface here.
-        </CardContent>
-      </Card>
+      <ScanTest />
     </div>
   );
 }

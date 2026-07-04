@@ -32,6 +32,20 @@ CREATE TABLE IF NOT EXISTS network_tests (
     created_at    TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
+-- Saved remote hosts (Termius-style host manager).
+-- NOTE: passwords are stored in plaintext for now (local tool); encrypt later.
+CREATE TABLE IF NOT EXISTS hosts (
+    id            TEXT PRIMARY KEY,
+    alias         TEXT NOT NULL,
+    hostname      TEXT,
+    username      TEXT NOT NULL,
+    ip            TEXT NOT NULL,
+    password      TEXT,
+    port          INTEGER NOT NULL DEFAULT 22,
+    created_at    TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at    TEXT
+);
+
 CREATE TABLE IF NOT EXISTS ssh_sessions (
     id            TEXT PRIMARY KEY,
     host          TEXT NOT NULL,
@@ -64,4 +78,7 @@ CREATE TABLE IF NOT EXISTS latency_results (
 
 CREATE INDEX IF NOT EXISTS idx_network_tests_kind ON network_tests(kind);
 CREATE INDEX IF NOT EXISTS idx_network_tests_target ON network_tests(target);
+
+-- One row per discovered address; enables upsert on rescan.
+CREATE UNIQUE INDEX IF NOT EXISTS idx_devices_address ON devices(address);
 "#;

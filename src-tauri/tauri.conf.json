@@ -42,7 +42,7 @@
     ],
     "linux": {
       "deb": {
-        "depends": ["iputils-ping", "traceroute"]
+        "depends": ["iputils-ping", "traceroute", "iproute2", "nmap"]
       }
     }
   },

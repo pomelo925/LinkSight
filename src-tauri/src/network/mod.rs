@@ -10,4 +10,5 @@ pub mod bandwidth;
 pub mod model;
 pub mod ping;
 pub mod scan;
+pub mod speedtest;
 pub mod traceroute;

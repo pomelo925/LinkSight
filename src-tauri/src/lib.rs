@@ -74,7 +74,14 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             commands::run_ping,
+            commands::run_scan,
+            commands::run_traceroute,
+            commands::run_speedtest,
             commands::list_network_interfaces,
+            commands::list_hosts,
+            commands::save_host,
+            commands::delete_host,
+            commands::verify_host,
         ])
         .run(tauri::generate_context!())
         .expect("error while running LinkSight");

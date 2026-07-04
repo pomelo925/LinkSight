@@ -7,7 +7,7 @@
 x-common-settings: &common
   build:
     context: ..
-    dockerfile: docker/Dockerfile.dev
+    dockerfile: docker/dockerfile
   image: pomelo925/linksight:dev
 
   volumes:
@@ -25,8 +25,16 @@ x-common-settings: &common
 
   environment:
     - DISPLAY=${DISPLAY:-:0}
-    # Required so ICMP ping / nmap / traceroute behave predictably
     - RUST_LOG=info
+    # Suppress harmless GTK / GL / a11y noise when rendering via host X11
+    - NO_AT_BRIDGE=1
+    - GTK_MODULES=
+    - LIBGL_ALWAYS_SOFTWARE=1
+    # WebKitGTK rendering fixes for GPU-less containers / X11 forwarding.
+    # The DMABUF renderer + accelerated compositing fall back to very slow
+    # software paths here, causing input/repaint lag — disable them.
+    - WEBKIT_DISABLE_DMABUF_RENDERER=1
+    - WEBKIT_DISABLE_COMPOSITING_MODE=1
 
   # host networking is required so LAN scans, ping and iperf3 see real
   # interfaces rather than the docker bridge.

@@ -1,0 +1,14 @@
+[[permission]]
+identifier = "allow-network-commands"
+description = "Allows network diagnostic Tauri commands."
+commands.allow = [
+    "run_ping",
+    "run_scan",
+    "run_traceroute",
+    "run_speedtest",
+    "list_network_interfaces",
+    "list_hosts",
+    "save_host",
+    "delete_host",
+    "verify_host",
+]
