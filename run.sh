@@ -1,116 +1,87 @@
 #!/bin/bash
+# =============================================================================
+# LinkSight - Docker development environment launcher
+#
+#   - single entrypoint wrapping docker compose
+#   - X11 forwarding so the Tauri GUI can render from inside the container
+# =============================================================================
 
-# Usage function
+set -euo pipefail
+
 usage() {
-  echo "usage: $0 <device> <service>"
-  echo "device:"
-  echo "  cpu             Use CPU-only environment"
-  echo "  gpu             Use GPU-accelerated environment"
+  echo "usage: $0 <service>"
+  echo ""
   echo "service:"
-  echo "  dev             Development service (interactive shell)"
-  echo "  deploy          Deploy service (application runtime)"
+  echo "  dev      Start the dev container and drop into an interactive shell"
+  echo "  build    Start the dev container and build production artifacts"
+  echo "  shell    Alias for 'dev' (interactive shell)"
+  echo "  down     Stop and remove the dev container"
   echo ""
   echo "Examples:"
-  echo "  $0 cpu dev      # Start CPU development environment"
-  echo "  $0 gpu deploy   # Start GPU deployment service"
+  echo "  $0 dev      # Interactive development shell (frontend + backend)"
+  echo "  $0 build    # Produce AppImage / deb / rpm inside the container"
   exit 1
 }
 
-# Check if exactly two arguments are provided
-if [ $# -ne 2 ]; then
-    echo "Error: Both device and service arguments are required."
-    usage
+if [ $# -ne 1 ]; then
+  echo "Error: exactly one service argument is required."
+  usage
 fi
 
-# Configuration
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+COMPOSE_FILE="$SCRIPT_DIR/docker/docker-compose.yml"
+PROJECT_NAME="linksight"
+SERVICE="dev"
+CONTAINER_NAME="${PROJECT_NAME}-dev"
 
-# Parse arguments
-DEVICE=$1
-SERVICE=$2
+ACTION=$1
 
-# Validate device
-case "$DEVICE" in
-    cpu)
-        COMPOSE_FILE="$SCRIPT_DIR/docker/compose.cpu.yml"
-        PROJECT_NAME="probrt-cpu"
-        ;;
-    gpu)
-        COMPOSE_FILE="$SCRIPT_DIR/docker/compose.gpu.yml"
-        PROJECT_NAME="probrt-gpu"
-        ;;
-    *)
-        echo "Error: Invalid device '$DEVICE'. Must be 'cpu' or 'gpu'."
-        usage
-        ;;
-esac
-
-# Validate service name
-case "$SERVICE" in
-    dev|deploy)
-        ;;
-    *)
-        echo "Error: Invalid service name '$SERVICE'. Must be 'dev' or 'deploy'."
-        usage
-        ;;
-esac
-
-# Set up X11 forwarding
-echo "Setting up X11 forwarding..."
-
-# Check if DISPLAY is set
-if [ -z "$DISPLAY" ]; then
-    echo "⚠️ WARNING: DISPLAY is not set. GUI apps may not work."
-    echo "   Please set DISPLAY environment variable or enable X11 forwarding."
-fi
-
-# Set up XAUTHORITY if not already set
-if [ -z "$XAUTHORITY" ]; then
-    export XAUTHORITY=$HOME/.Xauthority
-fi
-
-# Create XAUTHORITY file if it doesn't exist
-if [ ! -f "$XAUTHORITY" ]; then
-    echo "Creating XAUTHORITY file: $XAUTHORITY"
+# ---- X11 forwarding (required for the Tauri desktop window) -----------------
+setup_x11() {
+  echo "Setting up X11 forwarding..."
+  if [ -z "${DISPLAY:-}" ]; then
+    echo "WARNING: DISPLAY is not set. The desktop GUI may not render."
+  fi
+  if [ -z "${XAUTHORITY:-}" ]; then
+    export XAUTHORITY="$HOME/.Xauthority"
+  fi
+  if [ ! -f "$XAUTHORITY" ]; then
     touch "$XAUTHORITY"
-    if [ -n "$DISPLAY" ]; then
-        xauth nlist $DISPLAY | sed -e 's/^..../ffff/' | xauth -f "$XAUTHORITY" nmerge - 2>/dev/null || true
+    if [ -n "${DISPLAY:-}" ]; then
+      xauth nlist "$DISPLAY" | sed -e 's/^..../ffff/' | xauth -f "$XAUTHORITY" nmerge - 2>/dev/null || true
     fi
-else
-    echo "Using existing XAUTHORITY file: $XAUTHORITY"
-fi
+  fi
+  xhost +local:docker >/dev/null 2>&1 || true
+  export DISPLAY="${DISPLAY:-:0}"
+  export XAUTHORITY
+}
 
-# Allow Docker containers to access X11
-xhost +local:docker > /dev/null 2>&1 || true
-
-# Export environment variables
-export DISPLAY
-export XAUTHORITY
-
-# Clean up any existing containers
-echo "Cleaning up existing containers..."
-docker compose -p "$PROJECT_NAME" -f "$COMPOSE_FILE" down --volumes --remove-orphans 2>/dev/null || true
-
-# Start the specific service
-echo "Starting $DEVICE $SERVICE service..."
-docker compose -p "$PROJECT_NAME" -f "$COMPOSE_FILE" up -d $SERVICE
-
-# Wait a moment for container to be ready
-sleep 2
-
-# Container name based on project and service
-CONTAINER_NAME="${PROJECT_NAME}-${SERVICE}"
-
-if [ "$SERVICE" = "dev" ]; then
-    # Enter the container for dev service
-    echo "Entering container..."
+case "$ACTION" in
+  dev|shell)
+    setup_x11
+    echo "Starting LinkSight dev container..."
+    docker compose -p "$PROJECT_NAME" -f "$COMPOSE_FILE" up -d "$SERVICE"
+    sleep 2
+    echo "Entering container ($CONTAINER_NAME)..."
     docker exec -it "$CONTAINER_NAME" /bin/bash
-elif [ "$SERVICE" = "deploy" ]; then
-    # Show logs for deploy service
-    echo "Deploy service started. Showing logs..."
-    echo "Press Ctrl+C to stop the service."
-    docker compose -p "$PROJECT_NAME" -f "$COMPOSE_FILE" logs -f "$SERVICE"
-fi
+    ;;
+  build)
+    setup_x11
+    echo "Starting LinkSight dev container for a production build..."
+    docker compose -p "$PROJECT_NAME" -f "$COMPOSE_FILE" up -d "$SERVICE"
+    sleep 2
+    docker exec -it "$CONTAINER_NAME" bash -lc "./scripts/build.sh"
+    ;;
+  down)
+    docker compose -p "$PROJECT_NAME" -f "$COMPOSE_FILE" down --remove-orphans
+    echo "LinkSight dev container stopped."
+    exit 0
+    ;;
+  *)
+    echo "Error: invalid service '$ACTION'."
+    usage
+    ;;
+esac
 
-echo "Service session ended."
-echo "To stop the service, run: docker compose -p $PROJECT_NAME -f $COMPOSE_FILE down"
+echo "Session ended."
+echo "To stop the container, run: $0 down"

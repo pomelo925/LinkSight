@@ -1,0 +1,93 @@
+################################################################################
+# LinkSight - Reproducible development environment
+#
+# Provides a single image containing everything needed to build & run the
+# Tauri v2 desktop app plus the network diagnostic tooling it wraps:
+#   - Node.js (frontend / Vite)
+#   - Rust toolchain (Tauri backend, Tokio)
+#   - Tauri v2 Linux system dependencies (webkit2gtk 4.1, gtk3, appindicator)
+#   - Network tools: iperf3, nmap, iputils-ping, traceroute, openssh-client
+################################################################################
+
+################################################################################
+# Base stage - Ubuntu 22.04 with system + Tauri + network dependencies
+################################################################################
+FROM ubuntu:22.04 AS base
+
+LABEL org.opencontainers.image.title="LinkSight"
+LABEL org.opencontainers.image.description="Linux-first network diagnostics & connectivity analysis desktop app"
+LABEL org.opencontainers.image.authors="pomelo925"
+LABEL org.opencontainers.image.licenses="MIT"
+
+ENV DEBIAN_FRONTEND=noninteractive
+ENV LANG=C.UTF-8
+ENV LC_ALL=C.UTF-8
+SHELL ["/bin/bash", "-c"]
+
+# --- Core utilities + Tauri v2 system deps + network diagnostic tools --------
+RUN apt-get update && apt-get install -q -y --no-install-recommends \
+        # base utils
+        ca-certificates \
+        curl \
+        wget \
+        git \
+        file \
+        sudo \
+        gnupg2 \
+        pkg-config \
+        build-essential \
+        # Tauri v2 (Linux) runtime/build deps
+        libwebkit2gtk-4.1-dev \
+        libgtk-3-dev \
+        libayatana-appindicator3-dev \
+        librsvg2-dev \
+        libssl-dev \
+        libxdo-dev \
+        patchelf \
+        desktop-file-utils \
+        # network diagnostics tooling
+        iperf3 \
+        nmap \
+        iputils-ping \
+        traceroute \
+        openssh-client \
+        # sqlite CLI for inspecting local storage
+        sqlite3 \
+        libsqlite3-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+################################################################################
+# Toolchain stage - Node.js + Rust
+################################################################################
+FROM base AS toolchain
+
+# --- Node.js 20 (NodeSource) -------------------------------------------------
+ENV NODE_MAJOR=20
+RUN curl -fsSL https://deb.nodesource.com/setup_${NODE_MAJOR}.x | bash - \
+    && apt-get install -y --no-install-recommends nodejs \
+    && npm install -g pnpm@9 \
+    && rm -rf /var/lib/apt/lists/*
+
+# --- Rust (stable) via rustup ------------------------------------------------
+ENV RUSTUP_HOME=/usr/local/rustup \
+    CARGO_HOME=/usr/local/cargo \
+    PATH=/usr/local/cargo/bin:$PATH
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
+        | sh -s -- -y --no-modify-path --default-toolchain stable \
+    && rustup component add rustfmt clippy \
+    && cargo install tauri-cli --version "^2.0.0" --locked
+
+################################################################################
+# Development stage
+################################################################################
+FROM toolchain AS dev
+
+WORKDIR /workspace
+
+# Cache-friendly ordering: dependency manifests first (populated at build time
+# when present; the source tree is bind-mounted during development).
+ENV CARGO_TARGET_DIR=/workspace/src-tauri/target
+
+EXPOSE 1420
+
+CMD ["/bin/bash"]

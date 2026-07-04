@@ -1,0 +1,53 @@
+################################################################################
+# LinkSight - development compose
+#
+# Launched via ./run.sh (X11 forwarding + container lifecycle handled there).
+################################################################################
+
+x-common-settings: &common
+  build:
+    context: ..
+    dockerfile: docker/Dockerfile.dev
+  image: pomelo925/linksight:dev
+
+  volumes:
+    # GUI support (Tauri desktop window renders on the host X server)
+    - "${XAUTHORITY:-$HOME/.Xauthority}:${XAUTHORITY:-/root/.Xauthority}"
+    - "/tmp/.X11-unix:/tmp/.X11-unix"
+    - "/etc/localtime:/etc/localtime:ro"
+
+    # Source tree (live editing from the host)
+    - "..:/workspace"
+
+    # Persist cargo & npm caches across container restarts
+    - "linksight-cargo-registry:/usr/local/cargo/registry"
+    - "linksight-node-modules:/workspace/node_modules"
+
+  environment:
+    - DISPLAY=${DISPLAY:-:0}
+    # Required so ICMP ping / nmap / traceroute behave predictably
+    - RUST_LOG=info
+
+  # host networking is required so LAN scans, ping and iperf3 see real
+  # interfaces rather than the docker bridge.
+  network_mode: "host"
+
+  # NET_RAW / NET_ADMIN let ping & nmap craft raw packets.
+  cap_add:
+    - NET_RAW
+    - NET_ADMIN
+
+  stdin_open: true
+  tty: true
+  stop_grace_period: 1s
+  working_dir: /workspace
+
+services:
+  dev:
+    <<: *common
+    container_name: linksight-dev
+    command: ["/bin/bash"]
+
+volumes:
+  linksight-cargo-registry:
+  linksight-node-modules:
