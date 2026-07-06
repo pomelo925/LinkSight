@@ -27,7 +27,7 @@ mkdir -p "$OUT_DIR"
 BUNDLE_DIR="src-tauri/target/release/bundle"
 
 log "Collecting artifacts into $OUT_DIR"
-find "$BUNDLE_DIR" -type f \( -name '*.AppImage' -o -name '*.deb' -o -name '*.rpm' \) \
+find "$BUNDLE_DIR" -type f \( -name '*.AppImage' -o -name '*.deb' \) \
   -exec cp -v {} "$OUT_DIR/" \;
 
 # ---- Checksums --------------------------------------------------------------

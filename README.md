@@ -137,21 +137,58 @@ The reference flow is fully wired:
 | --------------------- | ---------------------------------------------- |
 | `scripts/setup.sh`    | Install deps & prepare the environment          |
 | `scripts/dev.sh`      | Start frontend + backend (hot reload)           |
-| `scripts/build.sh`    | Build production bundles (AppImage / deb / rpm) |
+| `scripts/build.sh`    | Build production bundles (AppImage / deb)         |
 | `scripts/test.sh`     | fmt + clippy + cargo test + frontend typecheck  |
-| `scripts/release.sh`  | Build & stage artifacts (+ checksums) for GitHub |
+| `scripts/release.sh`  | Local build & stage artifacts (optional pre-check) |
 
 ## Build & packaging
 
-`./scripts/build.sh` produces Linux bundles configured in
-`src-tauri/tauri.conf.json`:
+LinkSight ships **Linux-only** bundles (configured in `src-tauri/tauri.conf.json`):
 
-- **AppImage** (primary distribution format)
-- **deb** package
-- **rpm** package
+- **AppImage** — portable, works on most distros (recommended for end users)
+- **deb** — for Ubuntu / Debian (`sudo apt install ./linksight_*.deb`)
 
-Tagging a release (`git tag vX.Y.Z && git push --tags`) triggers
-`.github/workflows/release.yml`, which builds and drafts a GitHub release.
+### Recommended: let GitHub Actions build & attach artifacts
+
+You do **not** need to build locally and upload manually. The normal flow:
+
+```bash
+# 1. Push your code
+git push origin main
+
+# 2. Tag the release (must match tauri.conf.json version, with a v prefix)
+git tag v0.1.0
+git push origin v0.1.0
+```
+
+Pushing a `v*` tag triggers [`.github/workflows/release.yml`](.github/workflows/release.yml).
+It builds AppImage + deb on `ubuntu-latest` and creates a **Draft** GitHub Release
+with both files attached. Review the draft on GitHub → add release notes → **Publish**.
+
+[![Latest release](https://img.shields.io/github/v/release/pomelo925/LinkSight?label=download)](https://github.com/pomelo925/LinkSight/releases/latest)
+
+### Optional: local build before tagging
+
+Use this only to **verify the bundle runs** on your machine before you tag:
+
+```bash
+./scripts/build.sh          # or ./scripts/release.sh
+# Artifacts: src-tauri/target/release/bundle/appimage/*.AppImage
+#            src-tauri/target/release/bundle/deb/*.deb
+```
+
+Then tag and push — CI rebuilds cleanly and uploads to Releases. You do not upload
+the local files unless CI is unavailable.
+
+### End-user install (AppImage)
+
+```bash
+chmod +x LinkSight_*_amd64.AppImage
+./LinkSight_*_amd64.AppImage
+```
+
+Some distros (e.g. Ubuntu 22.04+) may require `libfuse2` for AppImage.
+Network diagnostics need system tools: `ping`, `traceroute`, `nmap`, `ip`.
 
 ## Data model (SQLite)
 

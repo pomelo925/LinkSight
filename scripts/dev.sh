@@ -12,6 +12,8 @@ cd "$ROOT_DIR"
 
 # shellcheck source=free-port.sh
 source "$ROOT_DIR/scripts/free-port.sh"
+# shellcheck source=install-dev-desktop.sh
+source "$ROOT_DIR/scripts/install-dev-desktop.sh"
 
 log() { printf '\033[1;36m[dev]\033[0m %s\n' "$*"; }
 warn() { printf '\033[1;33m[dev]\033[0m %s\n' "$*"; }
@@ -33,6 +35,8 @@ fi
 
 log "Launching Tauri dev (frontend + backend, hot reload)..."
 log "The LinkSight desktop window will open automatically."
+
+install_linksight_dev_desktop "$ROOT_DIR"
 
 if command -v cargo-tauri >/dev/null 2>&1 || cargo tauri --version >/dev/null 2>&1; then
   cargo tauri dev

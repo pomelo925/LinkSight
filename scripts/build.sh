@@ -3,7 +3,7 @@
 # build.sh - build the production desktop application
 #
 # Produces the Linux bundles configured in src-tauri/tauri.conf.json
-# (AppImage is the primary distribution format; deb/rpm also produced).
+# (AppImage is the primary distribution format; deb also produced).
 # =============================================================================
 set -euo pipefail
 
@@ -17,13 +17,13 @@ if [ ! -d node_modules ]; then
   ./scripts/setup.sh
 fi
 
-log "Building production bundles (AppImage / deb / rpm)..."
+log "Building production bundles (AppImage / deb)..."
 cargo tauri build
 
 log "Build complete. Artifacts:"
 BUNDLE_DIR="src-tauri/target/release/bundle"
 if [ -d "$BUNDLE_DIR" ]; then
-  find "$BUNDLE_DIR" -type f \( -name '*.AppImage' -o -name '*.deb' -o -name '*.rpm' \) -print
+  find "$BUNDLE_DIR" -type f \( -name '*.AppImage' -o -name '*.deb' \) -print
 else
   log "No bundle directory found at $BUNDLE_DIR"
 fi

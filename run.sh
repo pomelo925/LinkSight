@@ -34,9 +34,12 @@ COMPOSE_FILE="$SCRIPT_DIR/docker/compose.yaml"
 PROJECT_NAME="linksight"
 SERVICE="dev"
 CONTAINER_NAME="${PROJECT_NAME}-dev"
+IMAGE_NAME="pomelo925/linksight:dev"
 
 # shellcheck source=scripts/free-port.sh
 source "$SCRIPT_DIR/scripts/free-port.sh"
+# shellcheck source=scripts/install-dev-desktop.sh
+source "$SCRIPT_DIR/scripts/install-dev-desktop.sh"
 
 ACTION=$1
 
@@ -70,14 +73,24 @@ start_container() {
   fi
 
   free_port 1420
-  echo "Building / starting LinkSight dev container..."
-  docker compose -p "$PROJECT_NAME" -f "$COMPOSE_FILE" up -d --build "$SERVICE"
+
+  local build_args=()
+  if docker image inspect "$IMAGE_NAME" >/dev/null 2>&1; then
+    echo "Using existing image $IMAGE_NAME (skip build)."
+  else
+    echo "Image $IMAGE_NAME not found locally — building..."
+    build_args=(--build)
+  fi
+
+  echo "Starting LinkSight dev container..."
+  docker compose -p "$PROJECT_NAME" -f "$COMPOSE_FILE" up -d "${build_args[@]}" "$SERVICE"
   sleep 2
 }
 
 case "$ACTION" in
   dev)
     setup_x11
+    install_linksight_dev_desktop "$SCRIPT_DIR"
     start_container true
     echo "Launching LinkSight (cargo tauri dev)..."
     echo "Press Ctrl+C to stop. The desktop window will open automatically."
