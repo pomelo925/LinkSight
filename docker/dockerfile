@@ -37,6 +37,7 @@ RUN apt-get update && apt-get install -q -y --no-install-recommends \
     net-tools dnsutils arping \
     sqlite3 libsqlite3-dev \
     psmisc lsof \
+    fonts-noto-cjk \
     && rm -rf /var/lib/apt/lists/*
 
 ################################################################################
