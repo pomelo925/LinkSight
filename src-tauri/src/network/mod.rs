@@ -7,6 +7,7 @@
 //! modes are interchangeable at the API boundary.
 
 pub mod bandwidth;
+pub mod connectivity;
 pub mod model;
 pub mod ping;
 pub mod scan;

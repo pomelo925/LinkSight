@@ -41,7 +41,10 @@ CREATE TABLE IF NOT EXISTS hosts (
     username      TEXT NOT NULL,
     ip            TEXT NOT NULL,
     password      TEXT,
-    port          INTEGER NOT NULL DEFAULT 22,
+    port          INTEGER NOT NULL DEFAULT 0,
+    auth_mode     TEXT NOT NULL DEFAULT 'ssh',
+    ssh_private_key_path TEXT,
+    ssh_public_key       TEXT,
     created_at    TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at    TEXT
 );

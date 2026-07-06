@@ -8,11 +8,19 @@ use tauri::State;
 
 use crate::db::store::HostRecord;
 use crate::error::LinkSightError;
+use crate::network::connectivity::{
+    self, ConnectivityProgress, ConnectivityResult, ConnectivitySettings,
+};
 use crate::network::model::NetworkTestResult;
 use crate::network::ping;
 use crate::network::scan::{self, ScanResult};
 use crate::network::speedtest::{self, SpeedtestProgress, SpeedtestResult};
 use crate::network::traceroute::{self, TracerouteResult};
+use crate::fs::local as local_fs;
+use crate::fs::types::FileListing;
+use crate::ssh::exec::SshTarget;
+use crate::ssh::keys::{PrivateKeyValidation, PublicKeyValidation};
+use crate::ssh::sftp;
 use crate::ssh::verify::{self, VerifyResult};
 use crate::system::interface::{list_interfaces, InterfaceInfo};
 use crate::AppState;
@@ -83,6 +91,268 @@ pub async fn run_speedtest(
     speedtest::speedtest(on_progress).await
 }
 
+/// Connectivity test (Advanced Mode) — comprehensive local ↔ remote-host
+/// diagnostics (RTT, jitter, loss, path MTU, hops, iperf3 throughput, BDP).
+///
+/// Streams staged progress (handshake → ping → mtu → traceroute → uplink →
+/// downlink → done) to the frontend, then resolves with the final result.
+#[allow(clippy::too_many_arguments)]
+#[tauri::command]
+pub async fn run_connectivity_test(
+    ip: String,
+    port: Option<u16>,
+    username: String,
+    auth_mode: String,
+    password: Option<String>,
+    ssh_private_key_path: Option<String>,
+    settings: Option<ConnectivitySettings>,
+    on_progress: tauri::ipc::Channel<ConnectivityProgress>,
+    state: State<'_, AppState>,
+) -> Result<ConnectivityResult, crate::error::LinkSightError> {
+    let settings = settings.unwrap_or_default();
+    let result = connectivity::connectivity_test(
+        &ip,
+        port,
+        &username,
+        &auth_mode,
+        password.as_deref(),
+        ssh_private_key_path.as_deref(),
+        &settings,
+        on_progress,
+    )
+    .await?;
+
+    // Best-effort persistence: reuse the shared test table via a normalized row.
+    if let Some(db) = state.db.as_ref() {
+        let mut normalized = NetworkTestResult::new(
+            crate::network::model::TestKind::Iperf,
+            crate::network::model::TestMode::Advanced,
+            result.target.clone(),
+        );
+        normalized.id = result.id.clone();
+        normalized.status = result.status;
+        normalized.started_at = result.started_at.clone();
+        normalized.duration_ms = result.duration_ms;
+        normalized.summary = crate::network::model::TestSummary {
+            rtt_min_ms: result.rtt_min_ms,
+            rtt_avg_ms: result.rtt_avg_ms,
+            rtt_max_ms: result.rtt_max_ms,
+            jitter_ms: result.jitter_ms,
+            packet_loss_pct: result.packet_loss_pct,
+            bandwidth_mbps: result.downlink_mbps.or(result.uplink_mbps),
+            hops: result.hops,
+        };
+        normalized.raw = result.raw.clone();
+        normalized.error = result.error.clone();
+        if let Err(e) = db.save_test(&normalized).await {
+            tracing::warn!("failed to persist connectivity result: {e}");
+        }
+    }
+
+    Ok(result)
+}
+
+// ---- Local + remote file browser ------------------------------------------------
+
+fn ssh_target(
+    ip: String,
+    port: Option<u16>,
+    username: String,
+    auth_mode: String,
+    password: Option<String>,
+    ssh_private_key_path: Option<String>,
+) -> SshTarget {
+    SshTarget {
+        addr: format!("{ip}:{}", port.unwrap_or(22)),
+        username,
+        auth_mode,
+        password,
+        private_key_path: ssh_private_key_path,
+    }
+}
+
+#[tauri::command]
+pub fn local_list_dir(
+    path: Option<String>,
+    show_hidden: Option<bool>,
+) -> Result<FileListing, LinkSightError> {
+    local_fs::list_dir(path.as_deref(), show_hidden.unwrap_or(false))
+}
+
+#[tauri::command]
+pub fn local_mkdir(path: String) -> Result<(), LinkSightError> {
+    local_fs::mkdir(&path)
+}
+
+#[tauri::command]
+pub fn local_rename(old_path: String, new_path: String) -> Result<(), LinkSightError> {
+    local_fs::rename(&old_path, &new_path)
+}
+
+#[tauri::command]
+pub fn local_remove(path: String, kind: String) -> Result<(), LinkSightError> {
+    local_fs::remove(&path, &kind)
+}
+
+#[tauri::command]
+pub fn local_set_permissions(path: String, mode: u32) -> Result<(), LinkSightError> {
+    local_fs::set_permissions(&path, mode)
+}
+
+/// List a remote directory over SFTP.
+#[tauri::command]
+pub async fn sftp_list_dir(
+    ip: String,
+    port: Option<u16>,
+    username: String,
+    auth_mode: String,
+    password: Option<String>,
+    ssh_private_key_path: Option<String>,
+    path: Option<String>,
+    show_hidden: Option<bool>,
+) -> Result<FileListing, LinkSightError> {
+    let target = ssh_target(
+        ip,
+        port,
+        username,
+        auth_mode,
+        password,
+        ssh_private_key_path,
+    );
+    sftp::list_dir(&target, path.as_deref(), show_hidden.unwrap_or(false)).await
+}
+
+#[tauri::command]
+pub async fn sftp_mkdir(
+    ip: String,
+    port: Option<u16>,
+    username: String,
+    auth_mode: String,
+    password: Option<String>,
+    ssh_private_key_path: Option<String>,
+    path: String,
+) -> Result<(), LinkSightError> {
+    let target = ssh_target(
+        ip,
+        port,
+        username,
+        auth_mode,
+        password,
+        ssh_private_key_path,
+    );
+    sftp::mkdir(&target, &path).await
+}
+
+#[tauri::command]
+pub async fn sftp_rename(
+    ip: String,
+    port: Option<u16>,
+    username: String,
+    auth_mode: String,
+    password: Option<String>,
+    ssh_private_key_path: Option<String>,
+    old_path: String,
+    new_path: String,
+) -> Result<(), LinkSightError> {
+    let target = ssh_target(
+        ip,
+        port,
+        username,
+        auth_mode,
+        password,
+        ssh_private_key_path,
+    );
+    sftp::rename(&target, &old_path, &new_path).await
+}
+
+#[tauri::command]
+pub async fn sftp_remove(
+    ip: String,
+    port: Option<u16>,
+    username: String,
+    auth_mode: String,
+    password: Option<String>,
+    ssh_private_key_path: Option<String>,
+    path: String,
+    kind: String,
+) -> Result<(), LinkSightError> {
+    let target = ssh_target(
+        ip,
+        port,
+        username,
+        auth_mode,
+        password,
+        ssh_private_key_path,
+    );
+    sftp::remove(&target, &path, &kind).await
+}
+
+#[tauri::command]
+pub async fn sftp_set_permissions(
+    ip: String,
+    port: Option<u16>,
+    username: String,
+    auth_mode: String,
+    password: Option<String>,
+    ssh_private_key_path: Option<String>,
+    path: String,
+    mode: u32,
+) -> Result<(), LinkSightError> {
+    let target = ssh_target(
+        ip,
+        port,
+        username,
+        auth_mode,
+        password,
+        ssh_private_key_path,
+    );
+    sftp::set_permissions(&target, &path, mode).await
+}
+
+#[tauri::command]
+pub async fn sftp_upload(
+    ip: String,
+    port: Option<u16>,
+    username: String,
+    auth_mode: String,
+    password: Option<String>,
+    ssh_private_key_path: Option<String>,
+    local_path: String,
+    remote_dir: String,
+) -> Result<(), LinkSightError> {
+    let target = ssh_target(
+        ip,
+        port,
+        username,
+        auth_mode,
+        password,
+        ssh_private_key_path,
+    );
+    sftp::upload_file(&target, &local_path, &remote_dir).await
+}
+
+#[tauri::command]
+pub async fn sftp_download(
+    ip: String,
+    port: Option<u16>,
+    username: String,
+    auth_mode: String,
+    password: Option<String>,
+    ssh_private_key_path: Option<String>,
+    remote_path: String,
+    local_dir: String,
+) -> Result<(), LinkSightError> {
+    let target = ssh_target(
+        ip,
+        port,
+        username,
+        auth_mode,
+        password,
+        ssh_private_key_path,
+    );
+    sftp::download_file(&target, &remote_path, &local_dir).await
+}
+
 /// List the host's network interfaces (system module).
 #[tauri::command]
 pub async fn list_network_interfaces(
@@ -113,16 +383,32 @@ pub async fn save_host(
             "alias, username and ip are required".into(),
         ));
     }
-    if host.port == 0 {
-        host.port = 22;
+    if host.port == Some(0) {
+        host.port = None;
+    }
+    if host.auth_mode != "password" && host.auth_mode != "ssh" {
+        host.auth_mode = "ssh".into();
+    }
+    if host.auth_mode == "ssh"
+        && host
+            .ssh_private_key_path
+            .as_ref()
+            .is_none_or(|p| p.trim().is_empty())
+    {
+        return Err(LinkSightError::InvalidInput(
+            "private key path is required for SSH login mode".into(),
+        ));
     }
 
     let db = require_db(&state)?;
     if host.id.trim().is_empty() {
         host.id = uuid::Uuid::new_v4().to_string();
         db.insert_host(&host).await?;
-    } else {
+    } else if db.host_exists(&host.id).await? {
         db.update_host(&host).await?;
+    } else {
+        // Preserve caller-supplied id when updating a stale in-memory copy.
+        db.insert_host(&host).await?;
     }
     Ok(host)
 }
@@ -135,13 +421,97 @@ pub async fn delete_host(
     require_db(&state)?.delete_host(&id).await
 }
 
-/// Verify a host: TCP reachability, then SSH password authentication.
+/// Validate a local private-key file (format + fingerprint). No network I/O.
+#[tauri::command]
+pub async fn validate_ssh_private_key(path: String) -> Result<PrivateKeyValidation, LinkSightError> {
+    Ok(verify::validate_ssh_private_key(&path))
+}
+
+/// Validate an OpenSSH public key line (format + fingerprint). No network I/O.
+#[tauri::command]
+pub async fn validate_ssh_public_key(
+    ssh_public_key: Option<String>,
+) -> Result<PublicKeyValidation, LinkSightError> {
+    Ok(verify::validate_ssh_public_key(ssh_public_key.as_deref()))
+}
+
+/// Write pasted private-key material to the app data dir (0600) and return its path.
+#[tauri::command]
+pub fn persist_ssh_key_file(content: String) -> Result<String, LinkSightError> {
+    let trimmed = content.trim();
+    if trimmed.is_empty() {
+        return Err(LinkSightError::InvalidInput("key content is empty".into()));
+    }
+
+    let dir = app_data_dir()?.join("linksight").join("keys");
+    std::fs::create_dir_all(&dir)
+        .map_err(|e| LinkSightError::CommandFailed(format!("create keys dir: {e}")))?;
+
+    let path = dir.join(format!("{}.key", uuid::Uuid::new_v4()));
+    std::fs::write(&path, trimmed)
+        .map_err(|e| LinkSightError::CommandFailed(format!("write key file: {e}")))?;
+
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let _ = std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600));
+    }
+
+    let path_str = path.to_string_lossy().to_string();
+    let check = verify::validate_ssh_private_key(&path_str);
+    if !check.valid {
+        let _ = std::fs::remove_file(&path);
+        return Err(LinkSightError::InvalidInput(
+            check
+                .message
+                .unwrap_or_else(|| "invalid private key".into()),
+        ));
+    }
+
+    Ok(path_str)
+}
+
+/// Read a local key file (for re-opening the key editor on saved hosts).
+#[tauri::command]
+pub fn read_local_key_file(path: String) -> Result<String, LinkSightError> {
+    let p = path.trim();
+    if p.is_empty() {
+        return Err(LinkSightError::InvalidInput("path is empty".into()));
+    }
+    std::fs::read_to_string(p)
+        .map_err(|e| LinkSightError::CommandFailed(format!("read key file: {e}")))
+}
+
+fn app_data_dir() -> Result<std::path::PathBuf, LinkSightError> {
+    if let Ok(xdg) = std::env::var("XDG_DATA_HOME") {
+        if !xdg.is_empty() {
+            return Ok(std::path::PathBuf::from(xdg));
+        }
+    }
+    std::env::var("HOME")
+        .map(|home| std::path::PathBuf::from(home).join(".local/share"))
+        .map_err(|_| LinkSightError::CommandFailed("cannot resolve data directory".into()))
+}
+
+/// Verify a host: TCP reachability, then SSH password or public-key auth.
 #[tauri::command]
 pub async fn verify_host(
+    auth_mode: String,
     ip: String,
-    port: u16,
+    port: Option<u16>,
     username: String,
-    password: String,
+    password: Option<String>,
+    ssh_private_key_path: Option<String>,
+    ssh_public_key: Option<String>,
 ) -> Result<VerifyResult, LinkSightError> {
-    verify::verify_host(&ip, port, &username, &password).await
+    verify::verify_host(
+        &auth_mode,
+        &ip,
+        port,
+        &username,
+        password.as_deref(),
+        ssh_private_key_path.as_deref(),
+        ssh_public_key.as_deref(),
+    )
+    .await
 }

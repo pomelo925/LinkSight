@@ -1,36 +1,43 @@
-//! Host verification: two-stage check used by the Hosts page.
+//! Host verification: TCP reachability + SSH authentication.
 //!
-//! 1. TCP reachability (`ip:port` connect with timeout)
-//! 2. SSH password authentication via `russh`
-//!
-//! Host keys are accepted blindly for now — verification is a connectivity
-//! diagnostic, not a trust decision. Known-hosts pinning can come later.
+//! **Password mode** — password auth only.
+//! **SSH mode** — public-key auth with the local private key; on failure, if a
+//! password and (optional) public key are supplied, deploys the key to
+//! `authorized_keys` (ssh-copy-id) and retries.
 
+use std::path::Path;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use russh::client::{self, AuthResult};
 use serde::{Deserialize, Serialize};
 
+use super::deploy::deploy_public_key;
+use super::keys::{
+    self, private_key_with_hash, resolve_public_key_line, validate_private_key,
+    validate_public_key_text,
+};
 use crate::error::{LinkSightError, Result};
 
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(5);
 const AUTH_TIMEOUT: Duration = Duration::from_secs(10);
+const DEFAULT_SSH_PORT: u16 = 22;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct VerifyResult {
-    /// TCP connect to `ip:port` succeeded.
     pub reachable: bool,
-    /// SSH password authentication succeeded.
     pub authenticated: bool,
-    /// Time to establish + authenticate, when successful.
     pub latency_ms: Option<f64>,
-    /// Human-readable failure detail (empty on success).
     pub message: Option<String>,
+    pub public_key_valid: Option<bool>,
+    pub public_key_fingerprint: Option<String>,
+    pub auth_method: Option<String>,
+    /// True when a public key was deployed to the server during this verify run.
+    pub key_deployed: Option<bool>,
 }
 
-struct AcceptAllKeys;
+pub(crate) struct AcceptAllKeys;
 
 impl client::Handler for AcceptAllKeys {
     type Error = russh::Error;
@@ -43,12 +50,34 @@ impl client::Handler for AcceptAllKeys {
     }
 }
 
-/// Verify a saved host end-to-end (TCP reachability, then SSH auth).
+fn effective_port(port: Option<u16>) -> u16 {
+    port.filter(|&p| p > 0).unwrap_or(DEFAULT_SSH_PORT)
+}
+
+pub fn validate_ssh_private_key(path: &str) -> keys::PrivateKeyValidation {
+    validate_private_key(path)
+}
+
+pub fn validate_ssh_public_key(text: Option<&str>) -> keys::PublicKeyValidation {
+    match text.filter(|t| !t.trim().is_empty()) {
+        Some(t) => validate_public_key_text(t),
+        None => keys::PublicKeyValidation {
+            valid: false,
+            fingerprint: None,
+            message: Some("no public key provided".into()),
+        },
+    }
+}
+
+/// Verify a saved host end-to-end.
 pub async fn verify_host(
+    auth_mode: &str,
     ip: &str,
-    port: u16,
+    port: Option<u16>,
     username: &str,
-    password: &str,
+    password: Option<&str>,
+    ssh_private_key_path: Option<&str>,
+    ssh_public_key: Option<&str>,
 ) -> Result<VerifyResult> {
     if ip.trim().is_empty() || username.trim().is_empty() {
         return Err(LinkSightError::InvalidInput(
@@ -56,61 +85,281 @@ pub async fn verify_host(
         ));
     }
 
-    let addr = format!("{}:{}", ip.trim(), port);
-    let start = Instant::now();
+    let has_password = password.is_some_and(|p| !p.is_empty());
+    let ssh_mode = auth_mode != "password";
 
-    // Stage 1: TCP reachability.
-    match tokio::time::timeout(CONNECT_TIMEOUT, tokio::net::TcpStream::connect(&addr)).await {
-        Ok(Ok(_stream)) => {}
-        Ok(Err(e)) => {
-            return Ok(VerifyResult {
-                reachable: false,
-                authenticated: false,
-                latency_ms: None,
-                message: Some(format!("TCP connect failed: {e}")),
-            });
+    if ssh_mode {
+        if ssh_private_key_path.is_none_or(|p| p.trim().is_empty()) {
+            return Err(LinkSightError::InvalidInput(
+                "private key path is required for SSH login mode".into(),
+            ));
         }
-        Err(_) => {
+    } else if !has_password {
+        return Err(LinkSightError::InvalidInput(
+            "password is required for password login mode".into(),
+        ));
+    }
+
+    let private_check = ssh_mode
+        .then(|| validate_private_key(ssh_private_key_path.unwrap_or_default()))
+        .filter(|_| ssh_private_key_path.is_some_and(|p| !p.trim().is_empty()));
+
+    if let Some(ref check) = private_check {
+        if !check.valid {
             return Ok(VerifyResult {
                 reachable: false,
                 authenticated: false,
                 latency_ms: None,
-                message: Some(format!("TCP connect timed out after {CONNECT_TIMEOUT:?}")),
+                message: check.message.clone(),
+                public_key_valid: None,
+                public_key_fingerprint: check.fingerprint.clone(),
+                auth_method: None,
+                key_deployed: None,
             });
         }
     }
 
-    // Stage 2: SSH password authentication.
+    let port = effective_port(port);
+    let addr = format!("{}:{port}", ip.trim());
+    let start = Instant::now();
     let config = Arc::new(client::Config::default());
-    let auth = async {
-        let mut session = client::connect(config, addr.as_str(), AcceptAllKeys).await?;
-        session.authenticate_password(username, password).await
-    };
 
-    match tokio::time::timeout(AUTH_TIMEOUT, auth).await {
+    // Stage 1: TCP
+    match tokio::time::timeout(CONNECT_TIMEOUT, tokio::net::TcpStream::connect(&addr)).await {
+        Ok(Ok(_)) => {}
+        Ok(Err(e)) => {
+            return Ok(fail_tcp(start, Some(format!("TCP connect failed: {e}")), private_check));
+        }
+        Err(_) => {
+            return Ok(fail_tcp(
+                start,
+                Some(format!("TCP connect timed out after {CONNECT_TIMEOUT:?}")),
+                private_check,
+            ));
+        }
+    }
+
+    if !ssh_mode {
+        return finish_password_auth(&config, &addr, username, password.unwrap(), start, None).await;
+    }
+
+    let private_path = Path::new(ssh_private_key_path.unwrap().trim());
+
+    // Stage 2: try public-key auth
+    match try_publickey_auth(&config, &addr, username, private_path, start).await {
+        Ok(r) => {
+            return Ok(VerifyResult {
+                public_key_fingerprint: private_check.as_ref().and_then(|c| c.fingerprint.clone()),
+                auth_method: Some("publickey".into()),
+                key_deployed: Some(false),
+                ..r
+            });
+        }
+        Err(key_err) => {
+            if !has_password {
+                return Ok(VerifyResult {
+                    reachable: true,
+                    authenticated: false,
+                    latency_ms: None,
+                    message: Some(format!(
+                        "{key_err} — provide a password to deploy your public key on first connect"
+                    )),
+                    public_key_fingerprint: private_check.as_ref().and_then(|c| c.fingerprint.clone()),
+                    auth_method: None,
+                    key_deployed: Some(false),
+                    public_key_valid: None,
+                });
+            }
+
+            let pub_line = match resolve_public_key_line(
+                private_path.to_str().unwrap_or(""),
+                ssh_public_key,
+            ) {
+                Ok(l) => l,
+                Err(e) => {
+                    return Ok(VerifyResult {
+                        reachable: true,
+                        authenticated: false,
+                        latency_ms: None,
+                        message: Some(format!("{key_err}; deploy skipped: {e}")),
+                        public_key_fingerprint: private_check.as_ref().and_then(|c| c.fingerprint.clone()),
+                        auth_method: None,
+                        key_deployed: Some(false),
+                        public_key_valid: None,
+                    });
+                }
+            };
+
+            if let Err(e) = deploy_public_key(
+                &config,
+                &addr,
+                username,
+                password.unwrap(),
+                &pub_line,
+            )
+            .await
+            {
+                return Ok(VerifyResult {
+                    reachable: true,
+                    authenticated: false,
+                    latency_ms: None,
+                    message: Some(format!("{key_err}; deploy failed: {e}")),
+                    public_key_fingerprint: private_check.as_ref().and_then(|c| c.fingerprint.clone()),
+                    auth_method: None,
+                    key_deployed: Some(false),
+                    public_key_valid: Some(true),
+                });
+            }
+
+            // Retry public-key auth after deploy
+            match try_publickey_auth(&config, &addr, username, private_path, start).await {
+                Ok(r) => Ok(VerifyResult {
+                    public_key_fingerprint: private_check.as_ref().and_then(|c| c.fingerprint.clone()),
+                    auth_method: Some("publickey".into()),
+                    key_deployed: Some(true),
+                    message: Some("Public key deployed to authorized_keys (ssh-copy-id)".into()),
+                    public_key_valid: Some(true),
+                    ..r
+                }),
+                Err(retry_err) => Ok(VerifyResult {
+                    reachable: true,
+                    authenticated: false,
+                    latency_ms: None,
+                    message: Some(format!(
+                        "key deployed but authentication still failed: {retry_err}"
+                    )),
+                    public_key_fingerprint: private_check.as_ref().and_then(|c| c.fingerprint.clone()),
+                    auth_method: None,
+                    key_deployed: Some(true),
+                    public_key_valid: Some(true),
+                }),
+            }
+        }
+    }
+}
+
+fn fail_tcp(
+    _start: Instant,
+    message: Option<String>,
+    private_check: Option<keys::PrivateKeyValidation>,
+) -> VerifyResult {
+    VerifyResult {
+        reachable: false,
+        authenticated: false,
+        latency_ms: None,
+        message,
+        public_key_valid: None,
+        public_key_fingerprint: private_check.and_then(|c| c.fingerprint),
+        auth_method: None,
+        key_deployed: None,
+    }
+}
+
+async fn finish_password_auth(
+    config: &Arc<client::Config>,
+    addr: &str,
+    username: &str,
+    password: &str,
+    start: Instant,
+    key_deployed: Option<bool>,
+) -> Result<VerifyResult> {
+    match try_password_auth(config, addr, username, password, start).await {
+        Ok(r) => Ok(VerifyResult {
+            auth_method: Some("password".into()),
+            key_deployed,
+            ..r
+        }),
+        Err(msg) => Ok(VerifyResult {
+            reachable: true,
+            authenticated: false,
+            latency_ms: None,
+            message: Some(msg),
+            public_key_valid: None,
+            public_key_fingerprint: None,
+            auth_method: None,
+            key_deployed,
+        }),
+    }
+}
+
+async fn try_password_auth(
+    config: &Arc<client::Config>,
+    addr: &str,
+    username: &str,
+    password: &str,
+    start: Instant,
+) -> std::result::Result<VerifyResult, String> {
+    let result = tokio::time::timeout(AUTH_TIMEOUT, async {
+        let mut session = client::connect(config.clone(), addr, AcceptAllKeys)
+            .await
+            .map_err(|e| format!("SSH connect failed: {e}"))?;
+        session
+            .authenticate_password(username, password)
+            .await
+            .map_err(|e| format!("SSH auth failed: {e}"))
+    })
+    .await;
+
+    match result {
         Ok(Ok(AuthResult::Success)) => Ok(VerifyResult {
             reachable: true,
             authenticated: true,
             latency_ms: Some(start.elapsed().as_secs_f64() * 1000.0),
             message: None,
+            public_key_valid: None,
+            public_key_fingerprint: None,
+            auth_method: None,
+            key_deployed: None,
         }),
-        Ok(Ok(AuthResult::Failure { .. })) => Ok(VerifyResult {
+        Ok(Ok(AuthResult::Failure { .. })) => {
+            Err("authentication rejected — check username / password".into())
+        }
+        Ok(Err(msg)) => Err(msg),
+        Err(_) => Err(format!("SSH auth timed out after {AUTH_TIMEOUT:?}")),
+    }
+}
+
+async fn try_publickey_auth(
+    config: &Arc<client::Config>,
+    addr: &str,
+    username: &str,
+    private_path: &Path,
+    start: Instant,
+) -> std::result::Result<VerifyResult, String> {
+    let result = tokio::time::timeout(AUTH_TIMEOUT, async {
+        let mut session = client::connect(config.clone(), addr, AcceptAllKeys)
+            .await
+            .map_err(|e| format!("SSH connect failed: {e}"))?;
+        let rsa_hash = session
+            .best_supported_rsa_hash()
+            .await
+            .unwrap_or(None)
+            .flatten();
+        let auth_key = private_key_with_hash(private_path, rsa_hash)
+            .map_err(|e| e.to_string())?;
+        session
+            .authenticate_publickey(username, auth_key)
+            .await
+            .map_err(|e| format!("SSH public-key auth failed: {e}"))
+    })
+    .await;
+
+    match result {
+        Ok(Ok(AuthResult::Success)) => Ok(VerifyResult {
             reachable: true,
-            authenticated: false,
-            latency_ms: None,
-            message: Some("authentication rejected — check username / password".into()),
+            authenticated: true,
+            latency_ms: Some(start.elapsed().as_secs_f64() * 1000.0),
+            message: None,
+            public_key_valid: None,
+            public_key_fingerprint: None,
+            auth_method: None,
+            key_deployed: None,
         }),
-        Ok(Err(e)) => Ok(VerifyResult {
-            reachable: true,
-            authenticated: false,
-            latency_ms: None,
-            message: Some(format!("SSH handshake failed: {e}")),
-        }),
-        Err(_) => Ok(VerifyResult {
-            reachable: true,
-            authenticated: false,
-            latency_ms: None,
-            message: Some(format!("SSH auth timed out after {AUTH_TIMEOUT:?}")),
-        }),
+        Ok(Ok(AuthResult::Failure { .. })) => Err(
+            "public-key authentication rejected — key may not be on the server yet"
+                .into(),
+        ),
+        Ok(Err(msg)) => Err(msg),
+        Err(_) => Err(format!("SSH auth timed out after {AUTH_TIMEOUT:?}")),
     }
 }

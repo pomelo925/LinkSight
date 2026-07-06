@@ -22,7 +22,14 @@ pub struct HostRecord {
     pub ip: String,
     /// Plaintext for now (local tool); to be encrypted later.
     pub password: Option<String>,
-    pub port: u16,
+    /// `None` or `0` = use SSH default (22) at connect time; field left empty in UI.
+    pub port: Option<u16>,
+    /// `ssh` (default) or `password`.
+    pub auth_mode: String,
+    /// Local private-key file path (required for SSH mode).
+    pub ssh_private_key_path: Option<String>,
+    /// Optional public key pasted for first-time deploy (otherwise derived from private key).
+    pub ssh_public_key: Option<String>,
     pub created_at: Option<String>,
     pub updated_at: Option<String>,
 }
@@ -56,7 +63,42 @@ impl Db {
             .execute(&self.pool)
             .await
             .map_err(|e| LinkSightError::CommandFailed(e.to_string()))?;
+        self.migrate_hosts().await?;
         Ok(())
+    }
+
+    /// Best-effort schema patches for existing databases.
+    async fn migrate_hosts(&self) -> Result<()> {
+        for sql in [
+            "ALTER TABLE hosts ADD COLUMN auth_mode TEXT NOT NULL DEFAULT 'ssh'",
+            "ALTER TABLE hosts ADD COLUMN ssh_private_key_path TEXT",
+            "ALTER TABLE hosts ADD COLUMN ssh_public_key TEXT",
+        ] {
+            let _ = sqlx::query(sql).execute(&self.pool).await;
+        }
+        // Legacy: public-key path → infer private-key path (strip `.pub`).
+        let _ = sqlx::query(
+            "UPDATE hosts SET ssh_private_key_path = \
+             CASE WHEN ssh_public_key_path LIKE '%.pub' \
+                  THEN substr(ssh_public_key_path, 1, length(ssh_public_key_path) - 4) \
+                  ELSE ssh_public_key_path END \
+             WHERE ssh_private_key_path IS NULL AND ssh_public_key_path IS NOT NULL",
+        )
+        .execute(&self.pool)
+        .await;
+        Ok(())
+    }
+
+    fn port_from_db(raw: i64) -> Option<u16> {
+        if raw == 0 {
+            None
+        } else {
+            Some(raw as u16)
+        }
+    }
+
+    fn port_to_db(port: Option<u16>) -> i64 {
+        port.filter(|&p| p > 0).unwrap_or(0) as i64
     }
 
     /// Persist a completed network test.
@@ -124,7 +166,9 @@ impl Db {
 
     pub async fn list_hosts(&self) -> Result<Vec<HostRecord>> {
         let rows = sqlx::query(
-            "SELECT id, alias, hostname, username, ip, password, port, created_at, updated_at \
+            "SELECT id, alias, hostname, username, ip, password, port, \
+             COALESCE(auth_mode, 'ssh') AS auth_mode, \
+             ssh_private_key_path, ssh_public_key, created_at, updated_at \
              FROM hosts ORDER BY alias COLLATE NOCASE",
         )
         .fetch_all(&self.pool)
@@ -140,17 +184,31 @@ impl Db {
                 username: r.get("username"),
                 ip: r.get("ip"),
                 password: r.get("password"),
-                port: r.get::<i64, _>("port") as u16,
+                port: Self::port_from_db(r.get::<i64, _>("port")),
+                auth_mode: r.get("auth_mode"),
+                ssh_private_key_path: r.get("ssh_private_key_path"),
+                ssh_public_key: r.get("ssh_public_key"),
                 created_at: r.get("created_at"),
                 updated_at: r.get("updated_at"),
             })
             .collect())
     }
 
+    pub async fn host_exists(&self, id: &str) -> Result<bool> {
+        let row = sqlx::query("SELECT 1 FROM hosts WHERE id = ? LIMIT 1")
+            .bind(id)
+            .fetch_optional(&self.pool)
+            .await
+            .map_err(|e| LinkSightError::CommandFailed(e.to_string()))?;
+        Ok(row.is_some())
+    }
+
     pub async fn insert_host(&self, host: &HostRecord) -> Result<()> {
         sqlx::query(
-            "INSERT INTO hosts (id, alias, hostname, username, ip, password, port) \
-             VALUES (?, ?, ?, ?, ?, ?, ?)",
+            "INSERT INTO hosts \
+             (id, alias, hostname, username, ip, password, port, auth_mode, \
+              ssh_private_key_path, ssh_public_key) \
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         )
         .bind(host.id.as_str())
         .bind(host.alias.as_str())
@@ -158,7 +216,10 @@ impl Db {
         .bind(host.username.as_str())
         .bind(host.ip.as_str())
         .bind(host.password.as_deref())
-        .bind(host.port as i64)
+        .bind(Self::port_to_db(host.port))
+        .bind(host.auth_mode.as_str())
+        .bind(host.ssh_private_key_path.as_deref())
+        .bind(host.ssh_public_key.as_deref())
         .execute(&self.pool)
         .await
         .map_err(|e| LinkSightError::CommandFailed(e.to_string()))?;
@@ -168,14 +229,18 @@ impl Db {
     pub async fn update_host(&self, host: &HostRecord) -> Result<()> {
         sqlx::query(
             "UPDATE hosts SET alias = ?, hostname = ?, username = ?, ip = ?, \
-             password = ?, port = ?, updated_at = datetime('now') WHERE id = ?",
+             password = ?, port = ?, auth_mode = ?, ssh_private_key_path = ?, \
+             ssh_public_key = ?, updated_at = datetime('now') WHERE id = ?",
         )
         .bind(host.alias.as_str())
         .bind(host.hostname.as_deref())
         .bind(host.username.as_str())
         .bind(host.ip.as_str())
         .bind(host.password.as_deref())
-        .bind(host.port as i64)
+        .bind(Self::port_to_db(host.port))
+        .bind(host.auth_mode.as_str())
+        .bind(host.ssh_private_key_path.as_deref())
+        .bind(host.ssh_public_key.as_deref())
         .bind(host.id.as_str())
         .execute(&self.pool)
         .await
@@ -190,5 +255,83 @@ impl Db {
             .await
             .map_err(|e| LinkSightError::CommandFailed(e.to_string()))?;
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn sample_host(id: &str) -> HostRecord {
+        HostRecord {
+            id: id.to_string(),
+            alias: "lab-server".into(),
+            hostname: Some("server.local".into()),
+            username: "admin".into(),
+            ip: "192.168.1.10".into(),
+            password: None,
+            port: None,
+            auth_mode: "ssh".into(),
+            ssh_private_key_path: Some("/home/user/.ssh/id_ed25519".into()),
+            ssh_public_key: None,
+            created_at: None,
+            updated_at: None,
+        }
+    }
+
+    #[tokio::test]
+    async fn hosts_persist_across_db_reconnect() {
+        let path = std::env::temp_dir().join(format!(
+            "linksight-host-test-{}.db",
+            uuid::Uuid::new_v4()
+        ));
+        let path_str = path.to_string_lossy().to_string();
+
+        let id = uuid::Uuid::new_v4().to_string();
+        {
+            let db = Db::connect(&path_str).await.expect("open db");
+            db.insert_host(&sample_host(&id))
+                .await
+                .expect("insert host");
+        }
+
+        let db = Db::connect(&path_str).await.expect("reopen db");
+        let hosts = db.list_hosts().await.expect("list hosts");
+        assert_eq!(hosts.len(), 1);
+        assert_eq!(hosts[0].id, id);
+        assert_eq!(hosts[0].alias, "lab-server");
+
+        let mut updated = hosts[0].clone();
+        updated.alias = "lab-updated".into();
+        db.update_host(&updated).await.expect("update host");
+
+        drop(db);
+        let db = Db::connect(&path_str).await.expect("reopen after update");
+        let hosts = db.list_hosts().await.expect("list after update");
+        assert_eq!(hosts[0].alias, "lab-updated");
+
+        db.delete_host(&id).await.expect("delete host");
+        assert!(db.list_hosts().await.expect("list after delete").is_empty());
+
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[tokio::test]
+    async fn host_exists_detects_saved_rows() {
+        let path = std::env::temp_dir().join(format!(
+            "linksight-host-exists-{}.db",
+            uuid::Uuid::new_v4()
+        ));
+        let path_str = path.to_string_lossy().to_string();
+        let id = uuid::Uuid::new_v4().to_string();
+
+        let db = Db::connect(&path_str).await.expect("open db");
+        assert!(!db.host_exists(&id).await.expect("exists check"));
+        db.insert_host(&sample_host(&id))
+            .await
+            .expect("insert host");
+        assert!(db.host_exists(&id).await.expect("exists check"));
+
+        let _ = std::fs::remove_file(path);
     }
 }
