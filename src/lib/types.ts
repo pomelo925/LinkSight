@@ -124,6 +124,81 @@ export interface SpeedtestResult {
 
 export type SpeedtestPhase = "latency" | "download" | "upload" | "done";
 
+export type ConnectivityPhase =
+  | "handshake"
+  | "ping"
+  | "mtu"
+  | "traceroute"
+  | "uplink"
+  | "downlink"
+  | "done";
+
+/**
+ * Comprehensive local ↔ remote-host connectivity metrics (mirrors
+ * `ConnectivityResult` in `src-tauri/src/network/connectivity.rs`).
+ */
+export interface ConnectivityResult {
+  id: string;
+  kind: TestKind;
+  mode: TestMode;
+  target: string;
+  status: TestStatus;
+  startedAt: string;
+  durationMs: number;
+  rttMinMs: number | null;
+  rttAvgMs: number | null;
+  rttMaxMs: number | null;
+  delayMs: number | null;
+  jitterMs: number | null;
+  packetLossPct: number | null;
+  maxPayloadBytes: number | null;
+  pathMtuBytes: number | null;
+  hops: number | null;
+  handshakeMs: number | null;
+  uplinkMbps: number | null;
+  downlinkMbps: number | null;
+  bdpBytes: number | null;
+  raw: string | null;
+  error: string | null;
+}
+
+export type ConnectivityDirection = "up" | "down" | "both";
+export type ConnectivityProtocol = "tcp" | "udp";
+
+/** Tunable connectivity-test parameters (Connectivity page settings panel). */
+export interface ConnectivitySettings {
+  pingCount: number;
+  tracerouteMaxHops: number;
+  direction: ConnectivityDirection;
+  iperfStreams: number;
+  protocol: ConnectivityProtocol;
+  enableHandshake: boolean;
+  enablePing: boolean;
+  enableMtu: boolean;
+  enableTraceroute: boolean;
+  enableThroughput: boolean;
+}
+
+/** Streamed connectivity-test progress; metric fields fill in per phase. */
+export interface ConnectivityProgress {
+  phase: ConnectivityPhase;
+  progress: number;
+  rttMinMs: number | null;
+  rttAvgMs: number | null;
+  rttMaxMs: number | null;
+  delayMs: number | null;
+  jitterMs: number | null;
+  packetLossPct: number | null;
+  maxPayloadBytes: number | null;
+  pathMtuBytes: number | null;
+  hops: number | null;
+  handshakeMs: number | null;
+  uplinkMbps: number | null;
+  downlinkMbps: number | null;
+  bdpBytes: number | null;
+  note: string | null;
+}
+
 /** A saved remote host (mirrors `HostRecord` in `db/store.rs`). */
 export interface HostRecord {
   id: string;
@@ -132,9 +207,28 @@ export interface HostRecord {
   username: string;
   ip: string;
   password: string | null;
-  port: number;
+  /** Empty / null → SSH default port (22) at connect time. */
+  port: number | null;
+  /** `ssh` (default) or `password`. */
+  authMode: "ssh" | "password";
+  /** Local private-key file path (required for SSH mode). */
+  sshPrivateKeyPath: string | null;
+  /** Optional pasted public key for first-time deploy. */
+  sshPublicKey: string | null;
   createdAt?: string | null;
   updatedAt?: string | null;
+}
+
+export interface PrivateKeyValidation {
+  valid: boolean;
+  fingerprint: string | null;
+  message: string | null;
+}
+
+export interface PublicKeyValidation {
+  valid: boolean;
+  fingerprint: string | null;
+  message: string | null;
 }
 
 /** Host verification result (mirrors `VerifyResult` in `ssh/verify.rs`). */
@@ -143,7 +237,41 @@ export interface VerifyResult {
   authenticated: boolean;
   latencyMs: number | null;
   message: string | null;
+  publicKeyValid: boolean | null;
+  publicKeyFingerprint: string | null;
+  authMethod: "password" | "publickey" | null;
+  /** True when a public key was deployed during verify (ssh-copy-id). */
+  keyDeployed: boolean | null;
 }
+
+export type FileEntryKind = "dir" | "file" | "symlink";
+/** @deprecated use FileEntryKind */
+export type SftpEntryKind = FileEntryKind;
+
+/** A single file-system entry (local or remote). */
+export interface FileEntry {
+  name: string;
+  path: string;
+  kind: FileEntryKind;
+  size: number | null;
+  modified: number | null;
+  permissions: string;
+  mode: number | null;
+  uid: number | null;
+  gid: number | null;
+  owner: string | null;
+  group: string | null;
+}
+/** @deprecated use FileEntry */
+export type SftpEntry = FileEntry;
+
+/** A resolved directory listing. */
+export interface FileListing {
+  path: string;
+  entries: FileEntry[];
+}
+/** @deprecated use FileListing */
+export type SftpListing = FileListing;
 
 export type InterfaceKind = "wifi" | "ethernet" | "loopback" | "virtual";
 

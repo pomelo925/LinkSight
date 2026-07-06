@@ -8,6 +8,18 @@ export default {
       padding: "2rem",
     },
     extend: {
+      fontFamily: {
+        sans: [
+          "ui-sans-serif",
+          "system-ui",
+          "-apple-system",
+          "Noto Sans TC",
+          "Noto Sans CJK TC",
+          "PingFang TC",
+          "Microsoft JhengHei",
+          "sans-serif",
+        ],
+      },
       colors: {
         border: "hsl(var(--border))",
         input: "hsl(var(--input))",

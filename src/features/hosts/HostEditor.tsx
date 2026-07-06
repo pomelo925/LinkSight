@@ -1,49 +1,215 @@
 import { useState } from "react";
-import { ShieldCheck, Loader2, X, Save } from "lucide-react";
+import { ShieldCheck, Loader2, X, Save, FileKey, KeyRound, HelpCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { verifyHost } from "@/lib/api";
-import { formatMs } from "@/lib/utils";
-import type { HostRecord, VerifyResult } from "@/lib/types";
+import { CenterDialog } from "@/components/ui/center-dialog";
+import {
+  verifyHost,
+  validateSshPrivateKey,
+  validateSshPublicKey,
+} from "@/lib/api";
+import { useI18n } from "@/hooks/useI18n";
+import { formatMs, cn } from "@/lib/utils";
+import type {
+  HostRecord,
+  PrivateKeyValidation,
+  PublicKeyValidation,
+  VerifyResult,
+} from "@/lib/types";
+import { FieldTrigger } from "./FieldTrigger";
+import {
+  authDraftToRecord,
+  keySummary,
+  type SshKeyDraft,
+  type SshKeyPanelKind,
+} from "./SshAuthPanels";
 
 interface Props {
-  /** Record being edited; `id === ""` means creating a new host. */
   host: HostRecord;
   onSave: (host: HostRecord) => Promise<void>;
   onClose: () => void;
+  keyPanel: SshKeyPanelKind | null;
+  onKeyPanelChange: (panel: SshKeyPanelKind | null) => void;
+  privateKeyDraft: SshKeyDraft;
+  publicKeyDraft: SshKeyDraft;
+  firstTimeDeploy: boolean;
+  onFirstTimeDeployChange: (value: boolean) => void;
 }
 
 /** Termius-style side panel for creating / editing a saved host. */
-export function HostEditor({ host, onSave, onClose }: Props) {
+export function HostEditor({
+  host,
+  onSave,
+  onClose,
+  keyPanel,
+  onKeyPanelChange,
+  privateKeyDraft,
+  publicKeyDraft,
+  firstTimeDeploy,
+  onFirstTimeDeployChange,
+}: Props) {
+  const { t } = useI18n();
   const [form, setForm] = useState<HostRecord>({ ...host });
+  const [portText, setPortText] = useState(
+    host.port != null && host.port > 0 ? String(host.port) : "",
+  );
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const [verifying, setVerifying] = useState(false);
   const [verify, setVerify] = useState<VerifyResult | null>(null);
+  const [privateKeyValidation, setPrivateKeyValidation] =
+    useState<PrivateKeyValidation | null>(null);
+  const [publicKeyValidation, setPublicKeyValidation] =
+    useState<PublicKeyValidation | null>(null);
+  const [firstTimeHelpOpen, setFirstTimeHelpOpen] = useState(false);
+
+  const sshMode = form.authMode !== "password";
 
   const set = (patch: Partial<HostRecord>) => {
     setForm((f) => ({ ...f, ...patch }));
     setVerify(null);
   };
 
+  const authFields = authDraftToRecord(
+    form.authMode,
+    privateKeyDraft,
+    publicKeyDraft,
+    firstTimeDeploy,
+  );
+  const hasPrivateKey = (authFields.sshPrivateKeyPath?.trim()?.length ?? 0) > 0;
+  const hasPassword = (form.password?.trim()?.length ?? 0) > 0;
+  const hasPublicKey = (authFields.sshPublicKey?.trim()?.length ?? 0) > 0;
+
   const canSubmit =
     form.alias.trim() !== "" && form.username.trim() !== "" && form.ip.trim() !== "";
+
+  const parsePort = (): number | null => {
+    const t = portText.trim();
+    if (!t) return null;
+    const n = Number(t);
+    if (!Number.isInteger(n) || n < 1 || n > 65535) return null;
+    return n;
+  };
+
+  const buildRecord = (): HostRecord => {
+    const auth = authDraftToRecord(
+      form.authMode,
+      privateKeyDraft,
+      publicKeyDraft,
+      firstTimeDeploy,
+    );
+    return {
+      ...form,
+      alias: form.alias.trim(),
+      hostname: null,
+      username: form.username.trim(),
+      ip: form.ip.trim(),
+      port: parsePort(),
+      authMode: auth.authMode,
+      sshPrivateKeyPath: auth.sshPrivateKeyPath,
+      sshPublicKey: auth.sshPublicKey,
+      password: firstTimeDeploy || !sshMode ? form.password : null,
+    };
+  };
+
+  const openKeyPanel = (kind: SshKeyPanelKind) => {
+    if (kind === "public" && !firstTimeDeploy) return;
+    onKeyPanelChange(keyPanel === kind ? null : kind);
+  };
+
+  const handleValidatePrivateKey = async () => {
+    if (!authFields.sshPrivateKeyPath) {
+      setPrivateKeyValidation(null);
+      return;
+    }
+    try {
+      const r = await validateSshPrivateKey(authFields.sshPrivateKeyPath);
+      setPrivateKeyValidation(r);
+    } catch (err) {
+      setPrivateKeyValidation({
+        valid: false,
+        fingerprint: null,
+        message: err instanceof Error ? err.message : String(err),
+      });
+    }
+  };
+
+  const handleValidatePublicKey = async () => {
+    if (!authFields.sshPublicKey) {
+      setPublicKeyValidation(null);
+      return;
+    }
+    try {
+      const r = await validateSshPublicKey({ sshPublicKey: authFields.sshPublicKey });
+      setPublicKeyValidation(r);
+    } catch (err) {
+      setPublicKeyValidation({
+        valid: false,
+        fingerprint: null,
+        message: err instanceof Error ? err.message : String(err),
+      });
+    }
+  };
 
   const handleVerify = async () => {
     setVerifying(true);
     setVerify(null);
     setError(null);
+
+    if (sshMode && !hasPrivateKey) {
+      setError(t("hosts.editor.error.privateKeyRequired"));
+      setVerifying(false);
+      return;
+    }
+    if (!sshMode && !hasPassword) {
+      setError(t("hosts.editor.error.passwordRequired"));
+      setVerifying(false);
+      return;
+    }
+    if (sshMode && firstTimeDeploy && !hasPassword) {
+      setError(t("hosts.editor.error.passwordRequiredDeploy"));
+      setVerifying(false);
+      return;
+    }
+    if (sshMode && firstTimeDeploy && !hasPublicKey) {
+      setError(t("hosts.editor.error.publicKeyRequiredDeploy"));
+      setVerifying(false);
+      return;
+    }
+
     try {
-      const r = await verifyHost(
-        form.ip.trim(),
-        form.port || 22,
-        form.username.trim(),
-        form.password ?? "",
-      );
+      if (sshMode) await handleValidatePrivateKey();
+      if (sshMode && firstTimeDeploy && authFields.sshPublicKey) {
+        await handleValidatePublicKey();
+      }
+
+      const r = await verifyHost({
+        authMode: form.authMode,
+        ip: form.ip.trim(),
+        port: parsePort(),
+        username: form.username.trim(),
+        password: firstTimeDeploy || !sshMode ? form.password : null,
+        sshPrivateKeyPath: authFields.sshPrivateKeyPath,
+        sshPublicKey: firstTimeDeploy ? authFields.sshPublicKey : null,
+      });
       setVerify(r);
+
+      if (r.publicKeyFingerprint && sshMode) {
+        setPrivateKeyValidation((prev) => ({
+          valid: prev?.valid ?? r.authenticated,
+          fingerprint: r.publicKeyFingerprint,
+          message: prev?.message ?? null,
+        }));
+      }
+      if (r.publicKeyValid != null) {
+        setPublicKeyValidation({
+          valid: r.publicKeyValid,
+          fingerprint: r.publicKeyFingerprint,
+          message: r.publicKeyValid ? null : r.message,
+        });
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -52,91 +218,237 @@ export function HostEditor({ host, onSave, onClose }: Props) {
   };
 
   const handleSave = async () => {
+    if (sshMode && !hasPrivateKey) {
+      setError(t("hosts.editor.error.privateKeyRequired"));
+      return;
+    }
+    if (sshMode && firstTimeDeploy && !hasPassword) {
+      setError(t("hosts.editor.error.passwordRequiredDeploy"));
+      return;
+    }
+    if (sshMode && firstTimeDeploy && !hasPublicKey) {
+      setError(t("hosts.editor.error.publicKeyRequiredDeploy"));
+      return;
+    }
     setSaving(true);
     setError(null);
     try {
-      await onSave({
-        ...form,
-        alias: form.alias.trim(),
-        hostname: form.hostname?.trim() || null,
-        username: form.username.trim(),
-        ip: form.ip.trim(),
-        port: form.port || 22,
-      });
+      await onSave(buildRecord());
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
       setSaving(false);
     }
   };
 
+  const privateLabel = keySummary(privateKeyDraft);
+  const publicLabel = keySummary(publicKeyDraft);
+
   return (
-    <Card className="w-80 shrink-0 self-start">
-      <CardHeader className="flex-row items-center justify-between space-y-0">
-        <CardTitle className="text-base">
-          {form.id ? "Edit Host" : "New Host"}
-        </CardTitle>
-        <Button variant="ghost" size="icon" onClick={onClose} aria-label="Close">
+    <div className="flex h-full flex-col">
+      <div className="flex shrink-0 items-center justify-between border-b border-border px-4 py-3">
+        <h2 className="text-base font-semibold">
+          {form.id ? t("hosts.editor.editTitle") : t("hosts.editor.newTitle")}
+        </h2>
+        <Button variant="ghost" size="icon" onClick={onClose} aria-label={t("common.close")}>
           <X className="h-4 w-4" />
         </Button>
-      </CardHeader>
-      <CardContent className="space-y-3">
-        <Field label="Alias *">
+      </div>
+
+      <div className="flex-1 space-y-3 overflow-y-auto px-4 py-3">
+        <Field label={t("hosts.editor.alias")}>
           <Input
             value={form.alias}
             onChange={(e) => set({ alias: e.target.value })}
-            placeholder="e.g. Lab Server"
+            placeholder={t("hosts.editor.aliasPlaceholder")}
             autoComplete="off"
           />
         </Field>
-        <Field label="Hostname">
-          <Input
-            value={form.hostname ?? ""}
-            onChange={(e) => set({ hostname: e.target.value })}
-            placeholder="e.g. lab-server.local"
-            autoComplete="off"
-          />
-        </Field>
-        <Field label="Username *">
+        <Field label={t("hosts.editor.username")}>
           <Input
             value={form.username}
             onChange={(e) => set({ username: e.target.value })}
-            placeholder="e.g. ubuntu"
+            placeholder={t("hosts.editor.usernamePlaceholder")}
             autoComplete="off"
             spellCheck={false}
           />
         </Field>
-        <Field label="IP *">
+        <Field label={t("hosts.editor.ip")}>
           <Input
             value={form.ip}
             onChange={(e) => set({ ip: e.target.value })}
-            placeholder="e.g. 192.168.1.50"
+            placeholder={t("hosts.editor.ipPlaceholder")}
             autoComplete="off"
             spellCheck={false}
           />
         </Field>
-        <div className="grid grid-cols-2 gap-3">
-          <Field label="Password">
-            <Input
-              type="password"
-              value={form.password ?? ""}
-              onChange={(e) => set({ password: e.target.value })}
-              placeholder="••••••••"
-              autoComplete="new-password"
-            />
-          </Field>
-          <Field label="Port">
-            <Input
-              type="number"
-              min={1}
-              max={65535}
-              value={form.port}
-              onChange={(e) => set({ port: Number(e.target.value) || 0 })}
-              placeholder="22"
-            />
-          </Field>
-        </div>
 
-        {/* ---- Verification ---- */}
+        <Field label={t("hosts.editor.loginMode")}>
+          <div className="grid grid-cols-2 gap-2">
+            {(["ssh", "password"] as const).map((mode) => (
+              <button
+                key={mode}
+                type="button"
+                onClick={() => {
+                  set({ authMode: mode });
+                  onKeyPanelChange(null);
+                  if (mode === "password") onFirstTimeDeployChange(false);
+                }}
+                className={cn(
+                  "rounded-md border px-3 py-2 text-xs font-medium capitalize",
+                  "hover:border-primary/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                  form.authMode === mode
+                    ? "border-primary bg-primary/10 text-primary"
+                    : "border-input text-muted-foreground",
+                )}
+              >
+                {mode === "ssh" ? t("hosts.editor.auth.ssh") : t("hosts.editor.auth.password")}
+              </button>
+            ))}
+          </div>
+        </Field>
+
+        {sshMode ? (
+          <>
+            <Field label={t("hosts.editor.port")}>
+              <Input
+                type="text"
+                inputMode="numeric"
+                value={portText}
+                onChange={(e) => {
+                  setPortText(e.target.value.replace(/[^\d]/g, ""));
+                  setVerify(null);
+                }}
+                placeholder={t("hosts.editor.portPlaceholder")}
+                autoComplete="off"
+                spellCheck={false}
+                className="[appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+              />
+            </Field>
+
+            <Field label={t("hosts.editor.privateKey")}>
+              <FieldTrigger
+                icon={<KeyRound className="h-4 w-4" />}
+                label={privateLabel || t("hosts.sshKey.private.prompt")}
+                active={keyPanel === "private"}
+                onClick={() => openKeyPanel("private")}
+              />
+            </Field>
+
+            <div
+              className={cn(
+                "space-y-3 rounded-lg border p-3",
+                firstTimeDeploy
+                  ? "border-primary/40 bg-primary/5"
+                  : "border-border/60 bg-muted/10",
+              )}
+            >
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-xs font-medium text-muted-foreground">
+                  {t("hosts.editor.firstTime.title")}
+                </span>
+                <div className="flex items-center gap-1">
+                  <button
+                    type="button"
+                    aria-label={t("hosts.editor.firstTime.helpAria")}
+                    onClick={() => setFirstTimeHelpOpen(true)}
+                    className={cn(
+                      "flex h-7 w-7 items-center justify-center rounded-md border border-input text-muted-foreground",
+                      "hover:border-primary/50 hover:bg-accent/30 hover:text-foreground",
+                      "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                    )}
+                  >
+                    <HelpCircle className="h-3.5 w-3.5" />
+                  </button>
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={firstTimeDeploy}
+                    aria-label={t("hosts.editor.firstTime.toggleAria")}
+                    onClick={() => {
+                      const next = !firstTimeDeploy;
+                      onFirstTimeDeployChange(next);
+                      if (!next && keyPanel === "public") onKeyPanelChange(null);
+                      setVerify(null);
+                      setFirstTimeHelpOpen(false);
+                    }}
+                    className={cn(
+                      "relative h-5 w-9 shrink-0 rounded-full border",
+                      "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                      firstTimeDeploy
+                        ? "border-primary bg-primary"
+                        : "border-input bg-muted",
+                    )}
+                  >
+                    <span
+                      className={cn(
+                        "absolute top-0.5 block h-3.5 w-3.5 rounded-full bg-background shadow-sm",
+                        firstTimeDeploy ? "translate-x-[18px]" : "translate-x-0.5",
+                      )}
+                      style={{ transition: "transform 0.15s ease-out" }}
+                    />
+                  </button>
+                </div>
+              </div>
+
+              {firstTimeDeploy && (
+                <>
+                  <Field label={t("hosts.editor.password")}>
+                    <Input
+                      type="password"
+                      value={form.password ?? ""}
+                      onChange={(e) => set({ password: e.target.value })}
+                      placeholder={t("hosts.editor.passwordPlaceholder")}
+                      autoComplete="new-password"
+                    />
+                  </Field>
+                  <Field label={t("hosts.editor.publicKey")}>
+                    <FieldTrigger
+                      icon={<FileKey className="h-4 w-4" />}
+                      label={publicLabel || t("hosts.sshKey.public.prompt")}
+                      active={keyPanel === "public"}
+                      onClick={() => openKeyPanel("public")}
+                    />
+                  </Field>
+                </>
+              )}
+            </div>
+          </>
+        ) : (
+          <div className="grid grid-cols-2 gap-3">
+            <Field label={t("hosts.editor.password")}>
+              <Input
+                type="password"
+                value={form.password ?? ""}
+                onChange={(e) => set({ password: e.target.value })}
+                placeholder={t("hosts.editor.passwordPlaceholder")}
+                autoComplete="new-password"
+              />
+            </Field>
+            <Field label={t("hosts.editor.port")}>
+              <Input
+                type="text"
+                inputMode="numeric"
+                value={portText}
+                onChange={(e) => {
+                  setPortText(e.target.value.replace(/[^\d]/g, ""));
+                  setVerify(null);
+                }}
+                placeholder={t("hosts.editor.portPlaceholder")}
+                autoComplete="off"
+                spellCheck={false}
+                className="[appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+              />
+            </Field>
+          </div>
+        )}
+
+        {privateKeyValidation && sshMode && (
+          <KeyValidationCard title={t("hosts.editor.validation.privateKey")} validation={privateKeyValidation} />
+        )}
+        {publicKeyValidation && sshMode && firstTimeDeploy && authFields.sshPublicKey && (
+          <KeyValidationCard title={t("hosts.editor.validation.publicKey")} validation={publicKeyValidation} />
+        )}
+
         <Button
           variant="secondary"
           className="w-full"
@@ -148,26 +460,38 @@ export function HostEditor({ host, onSave, onClose }: Props) {
           ) : (
             <ShieldCheck className="h-4 w-4" />
           )}
-          {verifying ? "Verifying…" : "Verify Connection"}
+          {verifying ? t("hosts.editor.verifying") : t("hosts.editor.verifyConnection")}
         </Button>
 
         {verify && (
           <div className="space-y-1.5 rounded-lg border border-border/60 p-3 text-xs">
             <div className="flex items-center justify-between">
-              <span className="text-muted-foreground">TCP reachable</span>
+              <span className="text-muted-foreground">{t("hosts.editor.verify.tcpReachable")}</span>
               <Badge variant={verify.reachable ? "success" : "destructive"}>
-                {verify.reachable ? "OK" : "Failed"}
+                {verify.reachable ? t("common.ok") : t("common.failed")}
               </Badge>
             </div>
             <div className="flex items-center justify-between">
-              <span className="text-muted-foreground">SSH authentication</span>
+              <span className="text-muted-foreground">{t("hosts.editor.verify.sshAuth")}</span>
               <Badge variant={verify.authenticated ? "success" : "destructive"}>
-                {verify.authenticated ? "OK" : "Failed"}
+                {verify.authenticated ? t("common.ok") : t("common.failed")}
               </Badge>
             </div>
+            {verify.authMethod && (
+              <div className="flex items-center justify-between">
+                <span className="text-muted-foreground">{t("hosts.editor.verify.authMethod")}</span>
+                <span className="font-medium">{verify.authMethod}</span>
+              </div>
+            )}
+            {verify.keyDeployed && (
+              <div className="flex items-center justify-between">
+                <span className="text-muted-foreground">{t("hosts.editor.verify.keyDeployed")}</span>
+                <Badge variant="success">{t("hosts.editor.verify.sshCopyId")}</Badge>
+              </div>
+            )}
             {verify.latencyMs != null && (
               <div className="flex items-center justify-between">
-                <span className="text-muted-foreground">Connect time</span>
+                <span className="text-muted-foreground">{t("hosts.editor.verify.connectTime")}</span>
                 <span className="tabular-nums">{formatMs(verify.latencyMs)}</span>
               </div>
             )}
@@ -185,10 +509,48 @@ export function HostEditor({ host, onSave, onClose }: Props) {
           ) : (
             <Save className="h-4 w-4" />
           )}
-          {saving ? "Saving…" : "Save Host"}
+          {saving ? t("common.saving") : t("hosts.editor.saveHost")}
         </Button>
-      </CardContent>
-    </Card>
+      </div>
+
+      <CenterDialog
+        open={firstTimeHelpOpen}
+        onClose={() => setFirstTimeHelpOpen(false)}
+        title={t("hosts.editor.firstTime.dialogTitle")}
+      >
+        <p className="text-sm leading-relaxed text-muted-foreground">
+          {t("hosts.editor.firstTime.helpBody")}
+        </p>
+      </CenterDialog>
+    </div>
+  );
+}
+
+function KeyValidationCard({
+  title,
+  validation,
+}: {
+  title: string;
+  validation: PrivateKeyValidation | PublicKeyValidation;
+}) {
+  const { t } = useI18n();
+  return (
+    <div className="rounded-lg border border-border/60 px-3 py-2 text-xs">
+      <div className="flex items-center justify-between">
+        <span className="text-muted-foreground">{title}</span>
+        <Badge variant={validation.valid ? "success" : "destructive"}>
+          {validation.valid ? t("common.valid") : t("common.invalid")}
+        </Badge>
+      </div>
+      {validation.fingerprint && (
+        <p className="mt-1 truncate font-mono text-[10px] text-muted-foreground">
+          {validation.fingerprint}
+        </p>
+      )}
+      {validation.message && (
+        <p className="mt-1 text-destructive">{validation.message}</p>
+      )}
+    </div>
   );
 }
 

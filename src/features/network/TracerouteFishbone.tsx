@@ -1,6 +1,7 @@
 import { memo } from "react";
 import { Route } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { useI18n } from "@/hooks/useI18n";
 import { cn } from "@/lib/utils";
 import type { TraceHop, TracerouteResult } from "@/lib/types";
 
@@ -44,10 +45,15 @@ const HopNode = memo(function HopNode({
   hop: TraceHop;
   above: boolean;
 }) {
+  const { t } = useI18n();
   const rtt = bestRtt(hop);
   const title = hop.timedOut
-    ? `Hop ${hop.ttl}: no response`
-    : `Hop ${hop.ttl}: ${hop.host ?? hop.ip ?? "unknown"}${hop.ip ? ` (${hop.ip})` : ""}`;
+    ? t("traceroute.hop.noResponse", { ttl: hop.ttl })
+    : t("traceroute.hop.detail", {
+        ttl: hop.ttl,
+        host: hop.host ?? hop.ip ?? t("traceroute.hop.unknown"),
+        ip: hop.ip ?? "",
+      });
 
   return (
     <div className="relative flex h-24 min-w-14 flex-1 items-center justify-center" title={title}>
@@ -73,7 +79,11 @@ const HopNode = memo(function HopNode({
             #{hop.ttl}
           </span>
           <span className={cn("block text-xs font-semibold tabular-nums", rttTone(rtt))}>
-            {hop.timedOut ? "✕" : rtt != null ? `${rtt.toFixed(0)} ms` : "—"}
+            {hop.timedOut
+              ? t("traceroute.hop.timeout")
+              : rtt != null
+                ? t("traceroute.hop.rtt", { rtt: rtt.toFixed(0) })
+                : t("common.emptyValue")}
           </span>
         </div>
         {above && <div className="h-2 w-px bg-border" />}
@@ -96,29 +106,31 @@ export const TracerouteFishbone = memo(function TracerouteFishbone({
   /** Shown in the header while no result is available yet. */
   target?: string;
 }) {
+  const { t } = useI18n();
   const responsive = result?.hops.filter((h) => !h.timedOut) ?? [];
   const finalHop = responsive.length > 0 ? responsive[responsive.length - 1] : null;
   const finalRtt = finalHop ? bestRtt(finalHop) : null;
+  const displayTarget = result?.target ?? target ?? t("traceroute.targetFallback");
 
   return (
     <Card>
       <CardHeader className="flex-row items-center justify-between space-y-0">
         <CardTitle className="flex items-center gap-2 text-base">
           <Route className="h-4 w-4 text-muted-foreground" />
-          Route to {result?.target ?? target ?? "target"}
+          {t("traceroute.title", { target: displayTarget })}
         </CardTitle>
         {running ? (
           // Static indicator on purpose: an animated spinner here would run
           // for the whole trace (tens of seconds) and starve the
           // software-rendered webview, making clicks feel frozen.
-          <span className="text-sm text-primary">Tracing route…</span>
+          <span className="text-sm text-primary">{t("traceroute.tracing")}</span>
         ) : finalRtt != null ? (
           <div className="rounded-lg border border-border/70 bg-muted/30 px-3 py-1.5 text-right">
             <p className="text-[10px] uppercase tracking-wide text-muted-foreground">
-              Final hop
+              {t("traceroute.finalHop")}
             </p>
             <p className={cn("text-sm font-semibold tabular-nums", rttTone(finalRtt))}>
-              {finalRtt.toFixed(0)} ms
+              {t("traceroute.hop.rtt", { rtt: finalRtt.toFixed(0) })}
             </p>
           </div>
         ) : null}
@@ -128,33 +140,34 @@ export const TracerouteFishbone = memo(function TracerouteFishbone({
       <CardContent className="flex min-h-[10.5rem] flex-col justify-center">
         {running && !result ? (
           <p className="text-center text-sm text-muted-foreground">
-            Discovering hops along the path…
+            {t("traceroute.discovering")}
           </p>
         ) : !result ? (
           <p className="text-center text-sm text-muted-foreground">
-            No route traced yet — run an internet test to map the path hop by
-            hop.
+            {t("traceroute.empty")}
           </p>
         ) : result.status === "failed" ? (
           <p className="text-center text-sm text-destructive">
-            {result.error ?? "Traceroute failed"}
+            {result.error ?? t("traceroute.failed")}
           </p>
         ) : result.hops.length === 0 ? (
           <p className="text-center text-sm text-muted-foreground">
-            No hops returned.
+            {t("traceroute.noHops")}
           </p>
         ) : (
           <div className="overflow-x-auto">
             <div className="flex min-w-max items-center px-2 py-3">
-              <EndpointPill label="You" />
+              <EndpointPill label={t("traceroute.endpoint.you")} />
               {result.hops.map((hop, i) => (
                 <HopNode key={hop.ttl} hop={hop} above={i % 2 === 0} />
               ))}
               <EndpointPill label={result.target} />
             </div>
             <p className="pb-1 text-center text-xs text-muted-foreground">
-              {result.hops.length} hop{result.hops.length === 1 ? "" : "s"} ·{" "}
-              {result.durationMs} ms total · hover a node for details
+              {t("traceroute.summary", {
+                hops: result.hops.length,
+                ms: result.durationMs,
+              })}
             </p>
           </div>
         )}

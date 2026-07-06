@@ -3,6 +3,7 @@ import { Download, Upload, Timer, Waves, Gauge } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useSpeedtest } from "@/hooks/useSpeedtest";
+import { useI18n } from "@/hooks/useI18n";
 import { formatMs, cn } from "@/lib/utils";
 import type {
   SpeedtestPhase,
@@ -12,8 +13,8 @@ import type {
 } from "@/lib/types";
 import { StatusIndicator } from "./StatusIndicator";
 
-function formatMbps(value: number | null | undefined): string {
-  if (value == null) return "—";
+function formatMbps(value: number | null | undefined, emptyValue: string): string {
+  if (value == null) return emptyValue;
   return value.toFixed(1);
 }
 
@@ -94,32 +95,35 @@ export const SpeedMetricsGrid = memo(function SpeedMetricsGrid({
   activePhase?: SpeedtestPhase | null;
   phaseProgress?: number;
 }) {
+  const { t } = useI18n();
   const active = (phase: SpeedtestPhase) => activePhase === phase;
+  const empty = t("common.emptyValue");
+  const mbps = t("common.unit.mbps");
 
   return (
     <div className="grid gap-3 sm:grid-cols-2">
       <Metric
         icon={Download}
-        label="Download"
-        value={formatMbps(values.downloadMbps)}
-        unit="Mbps"
+        label={t("speedtest.metrics.download")}
+        value={formatMbps(values.downloadMbps, empty)}
+        unit={mbps}
         accent="text-primary"
         active={active("download")}
         phaseProgress={phaseProgress}
       />
       <Metric
         icon={Upload}
-        label="Upload"
-        value={formatMbps(values.uploadMbps)}
-        unit="Mbps"
+        label={t("speedtest.metrics.upload")}
+        value={formatMbps(values.uploadMbps, empty)}
+        unit={mbps}
         accent="text-success"
         active={active("upload")}
         phaseProgress={phaseProgress}
       />
       <Metric
         icon={Timer}
-        label="Latency"
-        value={values.latencyMs != null ? formatMs(values.latencyMs) : "—"}
+        label={t("speedtest.metrics.latency")}
+        value={values.latencyMs != null ? formatMs(values.latencyMs) : empty}
         unit=""
         accent="text-muted-foreground"
         active={active("latency")}
@@ -127,8 +131,8 @@ export const SpeedMetricsGrid = memo(function SpeedMetricsGrid({
       />
       <Metric
         icon={Waves}
-        label="Jitter"
-        value={values.jitterMs != null ? formatMs(values.jitterMs) : "—"}
+        label={t("speedtest.metrics.jitter")}
+        value={values.jitterMs != null ? formatMs(values.jitterMs) : empty}
         unit=""
         accent="text-muted-foreground"
         active={active("latency")}
@@ -166,21 +170,21 @@ function SpeedtestControls({
   status: TestStatus;
   onRun: () => void;
 }) {
+  const { t } = useI18n();
   const busy = status === "running" || status === "analyzing";
   return (
     <Card>
       <CardHeader className="flex-row items-center justify-between space-y-0">
-        <CardTitle>Internet Speed Test</CardTitle>
+        <CardTitle>{t("speedtest.form.title")}</CardTitle>
         <StatusIndicator status={status} />
       </CardHeader>
       <CardContent className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <p className="text-sm text-muted-foreground">
-          Measures your connection's download, upload and latency against
-          Cloudflare's public speed endpoints.
+          {t("speedtest.form.description")}
         </p>
         <Button onClick={onRun} disabled={busy} className="sm:w-40">
           <Gauge className="h-4 w-4" />
-          {busy ? "Testing…" : "Run Speed Test"}
+          {busy ? t("speedtest.form.testing") : t("speedtest.form.run")}
         </Button>
       </CardContent>
     </Card>
@@ -188,6 +192,7 @@ function SpeedtestControls({
 }
 
 export function SpeedtestTest() {
+  const { t } = useI18n();
   const { execute, status, progress, result } = useSpeedtest();
   const running = status === "running" || status === "analyzing";
   const failed = !running && result?.status === "failed";
@@ -199,7 +204,7 @@ export function SpeedtestTest() {
         <Card>
           <CardContent className="py-6">
             <p className="text-sm text-destructive">
-              {result?.error ?? "Speed test failed"}
+              {result?.error ?? t("speedtest.failed")}
             </p>
           </CardContent>
         </Card>

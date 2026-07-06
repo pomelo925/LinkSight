@@ -1,31 +1,33 @@
 import { motion } from "framer-motion";
 import { Loader2, CheckCircle2, XCircle, Circle, Search } from "lucide-react";
+import { useI18n } from "@/hooks/useI18n";
 import type { TestStatus } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 const CONFIG: Record<
   TestStatus,
-  { label: string; icon: typeof Circle; className: string; spin?: boolean }
+  { labelKey: string; icon: typeof Circle; className: string; spin?: boolean }
 > = {
-  idle: { label: "Idle", icon: Circle, className: "text-muted-foreground" },
+  idle: { labelKey: "common.status.idle", icon: Circle, className: "text-muted-foreground" },
   running: {
-    label: "Running",
+    labelKey: "common.status.running",
     icon: Loader2,
     className: "text-primary",
     spin: true,
   },
   analyzing: {
-    label: "Analyzing",
+    labelKey: "common.status.analyzing",
     icon: Search,
     className: "text-primary",
     spin: true,
   },
-  success: { label: "Success", icon: CheckCircle2, className: "text-success" },
-  failed: { label: "Failed", icon: XCircle, className: "text-destructive" },
+  success: { labelKey: "common.status.success", icon: CheckCircle2, className: "text-success" },
+  failed: { labelKey: "common.status.failed", icon: XCircle, className: "text-destructive" },
 };
 
 export function StatusIndicator({ status }: { status: TestStatus }) {
-  const { label, icon: Icon, className, spin } = CONFIG[status];
+  const { t } = useI18n();
+  const { labelKey, icon: Icon, className, spin } = CONFIG[status];
   return (
     <motion.div
       key={status}
@@ -34,7 +36,7 @@ export function StatusIndicator({ status }: { status: TestStatus }) {
       className={cn("flex items-center gap-2 text-sm font-medium", className)}
     >
       <Icon className={cn("h-4 w-4", spin && "animate-spin")} />
-      <span>{label}</span>
+      <span>{t(labelKey)}</span>
     </motion.div>
   );
 }

@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import type { HostRecord } from "@/lib/types";
 import { listHosts, saveHost, deleteHost } from "@/lib/api";
+import { useHomeStore } from "@/store/useHomeStore";
 
 interface HostState {
   hosts: HostRecord[];
@@ -35,5 +36,9 @@ export const useHostStore = create<HostState>((set, get) => ({
   remove: async (id) => {
     await deleteHost(id);
     set({ hosts: get().hosts.filter((h) => h.id !== id) });
+    const selected = useHomeStore.getState().selectedHost;
+    if (selected?.id === id) {
+      useHomeStore.getState().selectHost(null);
+    }
   },
 }));
