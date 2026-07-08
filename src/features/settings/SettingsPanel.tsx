@@ -1,0 +1,402 @@
+import { useCallback, useEffect, useState } from "react";
+import { Save } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
+import { LOCALES, type Locale } from "@/lib/i18n";
+import { FONT_SIZES, FONT_SIZE_PREVIEW_PX, type FontSize } from "@/lib/fontSize";
+import { THEMES, type ThemeId } from "@/lib/theme";
+import { useI18n } from "@/hooks/useI18n";
+import { useFontSizeStore } from "@/store/useFontSizeStore";
+import { useThemeStore } from "@/store/useThemeStore";
+import { TracerouteSettingsForm } from "@/features/settings/TracerouteSettingsForm";
+import { ConnectivitySettingsForm } from "@/features/settings/ConnectivitySettingsForm";
+
+export type SettingsTab = "general" | "internet" | "p2p";
+export type SettingsPanelVariant = "page" | "dialog";
+
+export type SettingsSaveActions = {
+  canSave: boolean;
+  onSave: () => void;
+};
+
+const TABS: { id: SettingsTab; labelKey: string }[] = [
+  { id: "general", labelKey: "settings.tabs.general" },
+  { id: "internet", labelKey: "settings.tabs.internet" },
+  { id: "p2p", labelKey: "settings.tabs.p2p" },
+];
+
+function SettingsTabBar({
+  value,
+  onChange,
+}: {
+  value: SettingsTab;
+  onChange: (tab: SettingsTab) => void;
+}) {
+  const { t } = useI18n();
+  return (
+    <div className="flex shrink-0 gap-1 border-b border-border px-3 pt-1">
+      {TABS.map((tab) => (
+        <button
+          key={tab.id}
+          type="button"
+          onClick={() => onChange(tab.id)}
+          className={cn(
+            "-mb-px rounded-t-md border border-b-0 px-4 py-2.5 text-sm font-medium transition-colors",
+            "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+            value === tab.id
+              ? "border-border bg-card text-foreground"
+              : "border-transparent text-muted-foreground hover:text-foreground",
+          )}
+        >
+          {t(tab.labelKey)}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function SettingsSection({
+  title,
+  description,
+  children,
+  bordered,
+}: {
+  title: string;
+  description?: string;
+  children: React.ReactNode;
+  bordered?: boolean;
+}) {
+  return (
+    <section className={cn(bordered && "border-t border-border pt-6")}>
+      <h3 className="text-sm font-semibold">{title}</h3>
+      {description && (
+        <p className="mt-1 text-sm text-muted-foreground">{description}</p>
+      )}
+      <div className="mt-4">{children}</div>
+    </section>
+  );
+}
+
+function LanguageSelector({
+  value,
+  onChange,
+}: {
+  value: Locale;
+  onChange: (locale: Locale) => void;
+}) {
+  return (
+    <div className="grid max-w-xs grid-cols-2 gap-2">
+      {LOCALES.map((opt) => (
+        <button
+          key={opt.value}
+          type="button"
+          onClick={() => onChange(opt.value)}
+          className={cn(
+            "whitespace-nowrap rounded-md border px-3 py-2 text-sm font-medium transition-colors",
+            "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+            value === opt.value
+              ? "border-primary bg-primary/10 text-primary"
+              : "border-input text-muted-foreground hover:border-primary/50 hover:text-foreground",
+          )}
+        >
+          {opt.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function FontSizeSelector({
+  value,
+  onChange,
+}: {
+  value: FontSize;
+  onChange: (fontSize: FontSize) => void;
+}) {
+  const { t } = useI18n();
+
+  return (
+    <div className="grid max-w-md grid-cols-3 gap-2">
+      {FONT_SIZES.map((opt) => (
+        <button
+          key={opt.value}
+          type="button"
+          onClick={() => onChange(opt.value)}
+          className={cn(
+            "flex flex-col items-center gap-1 rounded-md border px-3 py-3 transition-colors",
+            "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+            value === opt.value
+              ? "border-primary bg-primary/10 text-primary"
+              : "border-input text-muted-foreground hover:border-primary/50 hover:text-foreground",
+          )}
+        >
+          <span
+            className="font-semibold leading-none"
+            style={{ fontSize: FONT_SIZE_PREVIEW_PX[opt.value] }}
+            aria-hidden
+          >
+            Aa
+          </span>
+          <span className="whitespace-nowrap text-xs font-medium">{t(opt.labelKey)}</span>
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function ThemeSelector({
+  value,
+  onChange,
+}: {
+  value: ThemeId;
+  onChange: (theme: ThemeId) => void;
+}) {
+  const { t } = useI18n();
+
+  return (
+    <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+      {THEMES.map((theme) => (
+        <button
+          key={theme.id}
+          type="button"
+          onClick={() => onChange(theme.id)}
+          className={cn(
+            "flex flex-col gap-2 rounded-lg border p-3 text-left transition-colors",
+            "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+            value === theme.id
+              ? "border-primary bg-primary/10"
+              : "border-input hover:border-primary/50",
+          )}
+        >
+          <div
+            className="flex h-7 overflow-hidden rounded-md border border-border/40"
+            aria-hidden
+          >
+            {theme.swatches.map((color) => (
+              <span key={color} className="min-w-0 flex-1" style={{ backgroundColor: color }} />
+            ))}
+          </div>
+          <span
+            className={cn(
+              "text-sm font-medium",
+              value === theme.id ? "text-primary" : "text-foreground",
+            )}
+          >
+            {t(theme.labelKey)}
+          </span>
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function GeneralSettings({
+  variant,
+  resetToken,
+  onSaveActionsChange,
+}: {
+  variant: SettingsPanelVariant;
+  resetToken?: number;
+  onSaveActionsChange?: (actions: SettingsSaveActions | null) => void;
+}) {
+  const { locale, setLocale, t } = useI18n();
+  const fontSize = useFontSizeStore((s) => s.fontSize);
+  const setFontSize = useFontSizeStore((s) => s.setFontSize);
+  const theme = useThemeStore((s) => s.theme);
+  const setTheme = useThemeStore((s) => s.setTheme);
+
+  const [draftLocale, setDraftLocale] = useState(locale);
+  const [draftFontSize, setDraftFontSize] = useState(fontSize);
+  const [draftTheme, setDraftTheme] = useState(theme);
+
+  useEffect(() => {
+    setDraftLocale(locale);
+    setDraftFontSize(fontSize);
+    setDraftTheme(theme);
+  }, [locale, fontSize, theme, resetToken]);
+
+  const isDialog = variant === "dialog";
+  const activeLocale = isDialog ? draftLocale : locale;
+  const activeFontSize = isDialog ? draftFontSize : fontSize;
+  const activeTheme = isDialog ? draftTheme : theme;
+
+  const handleLocale = (v: Locale) => {
+    if (isDialog) setDraftLocale(v);
+    else setLocale(v);
+  };
+  const handleFontSize = (v: FontSize) => {
+    if (isDialog) setDraftFontSize(v);
+    else setFontSize(v);
+  };
+  const handleTheme = (v: ThemeId) => {
+    if (isDialog) setDraftTheme(v);
+    else setTheme(v);
+  };
+
+  const dirty =
+    draftLocale !== locale || draftFontSize !== fontSize || draftTheme !== theme;
+  const canSave = !isDialog || dirty;
+
+  const handleSave = useCallback(() => {
+    setLocale(draftLocale);
+    setFontSize(draftFontSize);
+    setTheme(draftTheme);
+  }, [draftLocale, draftFontSize, draftTheme, setLocale, setFontSize, setTheme]);
+
+  useEffect(() => {
+    if (!isDialog || !onSaveActionsChange) return;
+    onSaveActionsChange({ canSave, onSave: handleSave });
+    return () => onSaveActionsChange(null);
+  }, [isDialog, canSave, handleSave, onSaveActionsChange]);
+
+  return (
+    <div className="space-y-6">
+      <SettingsSection
+        title={t("settings.language.title")}
+        description={t("settings.language.description")}
+      >
+        <LanguageSelector value={activeLocale} onChange={handleLocale} />
+      </SettingsSection>
+
+      <SettingsSection
+        title={t("settings.fontSize.title")}
+        description={t("settings.fontSize.description")}
+        bordered
+      >
+        <FontSizeSelector value={activeFontSize} onChange={handleFontSize} />
+      </SettingsSection>
+
+      <SettingsSection
+        title={t("settings.theme.title")}
+        description={t("settings.theme.description")}
+        bordered
+      >
+        <ThemeSelector value={activeTheme} onChange={handleTheme} />
+      </SettingsSection>
+    </div>
+  );
+}
+
+export function SettingsTabContent({
+  tab,
+  variant = "page",
+  resetToken,
+  onSaveActionsChange,
+}: {
+  tab: SettingsTab;
+  variant?: SettingsPanelVariant;
+  resetToken?: number;
+  onSaveActionsChange?: (actions: SettingsSaveActions | null) => void;
+}) {
+  const { t } = useI18n();
+  const reportSave = variant === "dialog" ? onSaveActionsChange : undefined;
+
+  if (tab === "general") {
+    return (
+      <GeneralSettings
+        variant={variant}
+        resetToken={resetToken}
+        onSaveActionsChange={reportSave}
+      />
+    );
+  }
+  if (tab === "internet") {
+    return (
+      <SettingsSection
+        title={t("settings.tabs.internet")}
+        description={t("settings.internet.description")}
+      >
+        <TracerouteSettingsForm
+          variant={variant}
+          resetToken={resetToken}
+          onSaveActionsChange={reportSave}
+        />
+      </SettingsSection>
+    );
+  }
+  return (
+    <SettingsSection
+      title={t("settings.tabs.p2p")}
+      description={t("settings.p2p.description")}
+    >
+      <ConnectivitySettingsForm
+        variant={variant === "dialog" ? "dialog" : "inline"}
+        resetToken={resetToken}
+        onSaveActionsChange={reportSave}
+      />
+    </SettingsSection>
+  );
+}
+
+export function SettingsFooter({ embedded }: { embedded?: boolean }) {
+  const { t } = useI18n();
+  return (
+    <div
+      className={cn(
+        "flex items-end justify-between gap-4",
+        !embedded && "border-t border-border/40 pt-4",
+      )}
+    >
+      <div className="space-y-0.5 text-sm text-muted-foreground">
+        <p className="font-medium text-foreground">{t("settings.about.title")}</p>
+        <p>{t("settings.about.version")}</p>
+        <p>{t("settings.about.stack")}</p>
+      </div>
+      <p className="shrink-0 text-xs text-muted-foreground">{t("settings.about.copyright")}</p>
+    </div>
+  );
+}
+
+/** Tabbed settings shell — shared by the Settings page and the settings dialog. */
+export function SettingsPanel({
+  tab,
+  onTabChange,
+  className,
+  variant = "page",
+  resetToken,
+}: {
+  tab: SettingsTab;
+  onTabChange: (tab: SettingsTab) => void;
+  className?: string;
+  variant?: SettingsPanelVariant;
+  resetToken?: number;
+}) {
+  const { t } = useI18n();
+  const [saveActions, setSaveActions] = useState<SettingsSaveActions | null>(null);
+  const isDialog = variant === "dialog";
+
+  useEffect(() => {
+    setSaveActions(null);
+  }, [tab, resetToken]);
+
+  return (
+    <div
+      className={cn(
+        "flex min-h-0 flex-col overflow-hidden rounded-lg border border-border bg-card",
+        className,
+      )}
+    >
+      <SettingsTabBar value={tab} onChange={onTabChange} />
+      <div className="min-h-0 flex-1 overflow-y-auto p-5">
+        <SettingsTabContent
+          tab={tab}
+          variant={variant}
+          resetToken={resetToken}
+          onSaveActionsChange={isDialog ? setSaveActions : undefined}
+        />
+      </div>
+      {isDialog && (
+        <div className="flex shrink-0 justify-end border-t border-border bg-card px-5 py-3">
+          <Button
+            size="sm"
+            disabled={!saveActions?.canSave}
+            onClick={() => saveActions?.onSave()}
+          >
+            <Save className="h-4 w-4" />
+            {t("settings.save")}
+          </Button>
+        </div>
+      )}
+    </div>
+  );
+}
