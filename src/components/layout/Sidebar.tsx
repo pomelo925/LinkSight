@@ -2,7 +2,6 @@ import { useEffect } from "react";
 import { NavLink } from "react-router-dom";
 import { motion } from "framer-motion";
 import {
-  Activity,
   Home,
   Server,
   Radar,
@@ -11,6 +10,7 @@ import {
   Zap,
   Settings,
 } from "lucide-react";
+import appIcon from "@/assets/app-icon.png";
 import { cn } from "@/lib/utils";
 import { htmlLang } from "@/lib/i18n";
 import { FONT_SIZE_CLASS, type FontSize } from "@/lib/fontSize";
@@ -35,9 +35,7 @@ export function Sidebar() {
   return (
     <aside className="flex h-full w-60 shrink-0 flex-col border-r border-border bg-card">
       <div className="flex items-center gap-2 px-6 py-5">
-        <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
-          <Activity className="h-5 w-5" />
-        </div>
+        <img src={appIcon} alt="" className="h-10 w-10 shrink-0 rounded-lg" aria-hidden />
         <span className="text-lg font-semibold tracking-tight">LinkSight</span>
       </div>
 
@@ -70,7 +68,7 @@ export function Sidebar() {
       </nav>
 
       <div className="px-6 py-4 text-xs text-muted-foreground">
-        v0.1.0 · Linux
+        v0.3.0 · Linux
       </div>
     </aside>
   );

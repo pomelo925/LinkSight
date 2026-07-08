@@ -12,7 +12,9 @@ export function AppShell() {
   const inTauri = isTauri();
   const isScan = location.pathname === "/scan";
   const isSftp = location.pathname === "/sftp";
-  const isFixedLayout = isScan || isSftp;
+  const isSpeedtest = location.pathname === "/speedtest";
+  const isSettings = location.pathname === "/settings";
+  const isFixedLayout = isScan || isSftp || isSpeedtest || isSettings;
 
   return (
     <div className="flex h-full w-full overflow-hidden">
@@ -34,8 +36,8 @@ export function AppShell() {
           className={cn(
             "w-full",
             isFixedLayout && "flex h-full min-h-0 flex-col overflow-hidden px-8",
-            isScan && "py-8",
-            isSftp && "py-3",
+            (isScan || isSpeedtest || isSftp) && "py-8",
+            isSettings && "py-6",
             !isFixedLayout && "px-8 py-8",
           )}
         >

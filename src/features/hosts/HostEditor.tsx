@@ -1,9 +1,9 @@
 import { useState } from "react";
-import { ShieldCheck, Loader2, X, Save, FileKey, KeyRound, HelpCircle } from "lucide-react";
+import { ShieldCheck, Loader2, X, Save, FileKey, KeyRound } from "lucide-react";
+import { InfoHint } from "@/components/ui/info-hint";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { CenterDialog } from "@/components/ui/center-dialog";
 import {
   verifyHost,
   validateSshPrivateKey,
@@ -63,7 +63,6 @@ export function HostEditor({
     useState<PrivateKeyValidation | null>(null);
   const [publicKeyValidation, setPublicKeyValidation] =
     useState<PublicKeyValidation | null>(null);
-  const [firstTimeHelpOpen, setFirstTimeHelpOpen] = useState(false);
 
   const sshMode = form.authMode !== "password";
 
@@ -347,18 +346,12 @@ export function HostEditor({
                   {t("hosts.editor.firstTime.title")}
                 </span>
                 <div className="flex items-center gap-1">
-                  <button
-                    type="button"
-                    aria-label={t("hosts.editor.firstTime.helpAria")}
-                    onClick={() => setFirstTimeHelpOpen(true)}
-                    className={cn(
-                      "flex h-7 w-7 items-center justify-center rounded-md border border-input text-muted-foreground",
-                      "hover:border-primary/50 hover:bg-accent/30 hover:text-foreground",
-                      "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                    )}
-                  >
-                    <HelpCircle className="h-3.5 w-3.5" />
-                  </button>
+                  <InfoHint
+                    align="end"
+                    ariaLabel={t("hosts.editor.firstTime.helpAria")}
+                    title={t("hosts.editor.firstTime.dialogTitle")}
+                    body={t("hosts.editor.firstTime.helpBody")}
+                  />
                   <button
                     type="button"
                     role="switch"
@@ -369,7 +362,6 @@ export function HostEditor({
                       onFirstTimeDeployChange(next);
                       if (!next && keyPanel === "public") onKeyPanelChange(null);
                       setVerify(null);
-                      setFirstTimeHelpOpen(false);
                     }}
                     className={cn(
                       "relative h-5 w-9 shrink-0 rounded-full border",
@@ -512,16 +504,6 @@ export function HostEditor({
           {saving ? t("common.saving") : t("hosts.editor.saveHost")}
         </Button>
       </div>
-
-      <CenterDialog
-        open={firstTimeHelpOpen}
-        onClose={() => setFirstTimeHelpOpen(false)}
-        title={t("hosts.editor.firstTime.dialogTitle")}
-      >
-        <p className="text-sm leading-relaxed text-muted-foreground">
-          {t("hosts.editor.firstTime.helpBody")}
-        </p>
-      </CenterDialog>
     </div>
   );
 }

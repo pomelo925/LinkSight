@@ -10,6 +10,7 @@ interface CenterDialogProps {
   title: string;
   children: React.ReactNode;
   className?: string;
+  bodyClassName?: string;
 }
 
 /** Fixed center overlay — does not affect surrounding layout height. */
@@ -19,6 +20,7 @@ export function CenterDialog({
   title,
   children,
   className,
+  bodyClassName,
 }: CenterDialogProps) {
   useEffect(() => {
     if (!open) return;
@@ -42,7 +44,7 @@ export function CenterDialog({
       <Card
         className={cn("relative z-10 w-full max-w-md shadow-xl", className)}
       >
-        <CardHeader className="flex-row items-center justify-between space-y-0 pb-2">
+        <CardHeader className="flex shrink-0 flex-row items-center justify-between space-y-0 pb-2">
           <CardTitle className="text-base">{title}</CardTitle>
           <Button
             variant="ghost"
@@ -54,7 +56,7 @@ export function CenterDialog({
             <X className="h-4 w-4" />
           </Button>
         </CardHeader>
-        <CardContent>{children}</CardContent>
+        <CardContent className={bodyClassName}>{children}</CardContent>
       </Card>
     </div>
   );

@@ -95,10 +95,7 @@ export function Hosts() {
             editing && "pr-80",
           )}
         >
-          <PageHeader
-            title={t("hosts.title")}
-            description={t("hosts.description")}
-          />
+          <PageHeader title={t("hosts.title")} description={t("hosts.description")} />
 
           <Button onClick={() => openEditor({ ...EMPTY_HOST })}>
             <Plus className="h-4 w-4" />
