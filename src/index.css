@@ -5,20 +5,20 @@
 @layer base {
   :root,
   html.theme-default {
-    --background: 222 47% 11%;
-    --foreground: 213 31% 91%;
+    --background: 222 47% 9%;
+    --foreground: 213 40% 96%;
 
     --card: 222 47% 13%;
-    --card-foreground: 213 31% 91%;
+    --card-foreground: 213 40% 96%;
 
-    --primary: 199 89% 48%;
+    --primary: 199 89% 52%;
     --primary-foreground: 210 40% 98%;
 
     --secondary: 217 33% 20%;
     --secondary-foreground: 210 40% 98%;
 
     --muted: 217 33% 18%;
-    --muted-foreground: 215 20% 65%;
+    --muted-foreground: 215 25% 78%;
 
     --accent: 217 33% 20%;
     --accent-foreground: 210 40% 98%;
@@ -38,126 +38,95 @@
 
   /* VS Code Monokai */
   html.theme-monokai {
-    --background: 70 8% 15%;
-    --foreground: 60 30% 96%;
+    --background: 70 9% 11%;
+    --foreground: 60 36% 98%;
 
-    --card: 55 11% 22%;
-    --card-foreground: 60 30% 96%;
+    --card: 65 9% 17%;
+    --card-foreground: 60 36% 98%;
 
-    --primary: 190 81% 67%;
-    --primary-foreground: 70 8% 15%;
+    --primary: 190 85% 72%;
+    --primary-foreground: 70 9% 11%;
 
-    --secondary: 55 8% 26%;
-    --secondary-foreground: 60 30% 96%;
+    --secondary: 60 7% 24%;
+    --secondary-foreground: 60 36% 98%;
 
-    --muted: 55 11% 22%;
-    --muted-foreground: 50 11% 41%;
+    --muted: 65 9% 19%;
+    --muted-foreground: 55 16% 72%;
 
-    --accent: 32 98% 56%;
-    --accent-foreground: 70 8% 15%;
+    --accent: 32 98% 60%;
+    --accent-foreground: 70 9% 11%;
 
-    --destructive: 338 95% 56%;
-    --destructive-foreground: 60 30% 96%;
+    --destructive: 338 95% 60%;
+    --destructive-foreground: 60 36% 98%;
 
-    --success: 80 76% 53%;
-    --success-foreground: 70 8% 15%;
+    --success: 80 76% 58%;
+    --success-foreground: 70 9% 11%;
 
-    --border: 55 8% 26%;
-    --input: 55 8% 26%;
-    --ring: 190 81% 67%;
+    --border: 60 7% 26%;
+    --input: 60 7% 26%;
+    --ring: 190 85% 72%;
   }
 
   /* Watermelon 西瓜 */
   html.theme-watermelon {
-    --background: 198 17% 20%;
-    --foreground: 27 98% 83%;
+    --background: 198 22% 15%;
+    --foreground: 27 98% 90%;
 
-    --card: 198 17% 24%;
-    --card-foreground: 27 98% 83%;
+    --card: 198 19% 21%;
+    --card-foreground: 27 98% 90%;
 
-    --primary: 4 100% 74%;
-    --primary-foreground: 198 17% 20%;
+    --primary: 4 100% 76%;
+    --primary-foreground: 198 22% 13%;
 
-    --secondary: 118 18% 66%;
-    --secondary-foreground: 198 17% 20%;
+    --secondary: 118 22% 70%;
+    --secondary-foreground: 198 22% 15%;
 
-    --muted: 198 14% 26%;
-    --muted-foreground: 118 18% 66%;
+    --muted: 198 16% 24%;
+    --muted-foreground: 118 26% 78%;
 
-    --accent: 352 77% 60%;
-    --accent-foreground: 60 30% 96%;
+    --accent: 352 82% 66%;
+    --accent-foreground: 60 30% 98%;
 
-    --destructive: 352 77% 60%;
-    --destructive-foreground: 60 30% 96%;
+    --destructive: 352 82% 62%;
+    --destructive-foreground: 60 30% 98%;
 
-    --success: 118 18% 66%;
-    --success-foreground: 198 17% 20%;
+    --success: 118 26% 74%;
+    --success-foreground: 198 22% 15%;
 
-    --border: 198 14% 28%;
-    --input: 198 14% 28%;
-    --ring: 4 100% 74%;
+    --border: 198 16% 28%;
+    --input: 198 16% 28%;
+    --ring: 4 100% 76%;
   }
 
-  /* Rose & Charcoal 桃紅玫瑰 */
+  /* Rose Charcoal 碳黑玫瑰 */
   html.theme-rose-charcoal {
-    --background: 0 0% 21%;
-    --foreground: 0 1% 66%;
+    --background: 0 0% 14%;
+    --foreground: 0 0% 94%;
 
-    --card: 0 0% 28%;
-    --card-foreground: 0 1% 66%;
+    --card: 0 0% 20%;
+    --card-foreground: 0 0% 94%;
 
-    --primary: 340 82% 50%;
+    --primary: 340 82% 56%;
     --primary-foreground: 0 0% 100%;
 
     --secondary: 340 54% 56%;
     --secondary-foreground: 0 0% 100%;
 
-    --muted: 0 0% 28%;
-    --muted-foreground: 0 1% 66%;
+    --muted: 0 0% 24%;
+    --muted-foreground: 0 0% 74%;
 
     --accent: 340 54% 56%;
     --accent-foreground: 0 0% 100%;
 
-    --destructive: 340 82% 50%;
+    --destructive: 6 78% 57%;
     --destructive-foreground: 0 0% 100%;
 
-    --success: 340 54% 56%;
+    --success: 145 45% 55%;
     --success-foreground: 0 0% 100%;
 
-    --border: 0 0% 32%;
-    --input: 0 0% 32%;
-    --ring: 340 82% 50%;
-  }
-
-  /* Lagoon Teal 湖水藍綠 */
-  html.theme-lagoon-teal {
-    --background: 0 6% 33%;
-    --foreground: 84 91% 87%;
-
-    --card: 190 21% 42%;
-    --card-foreground: 84 91% 87%;
-
-    --primary: 177 43% 47%;
-    --primary-foreground: 0 6% 33%;
-
-    --secondary: 134 52% 75%;
-    --secondary-foreground: 0 6% 33%;
-
-    --muted: 0 6% 38%;
-    --muted-foreground: 134 52% 75%;
-
-    --accent: 134 52% 75%;
-    --accent-foreground: 0 6% 33%;
-
-    --destructive: 0 72% 51%;
-    --destructive-foreground: 0 0% 100%;
-
-    --success: 134 52% 75%;
-    --success-foreground: 0 6% 33%;
-
-    --border: 190 21% 42%;
-    --input: 190 21% 42%;
-    --ring: 177 43% 47%;
+    --border: 0 0% 30%;
+    --input: 0 0% 30%;
+    --ring: 340 82% 56%;
   }
 
   /* Root rem scale — small matches the original 16px baseline. */
@@ -209,4 +178,23 @@
 }
 ::-webkit-scrollbar-track {
   background: transparent;
+}
+
+.host-circle-dashed {
+  transform-origin: center;
+}
+
+/* Slow 0.35s rotation on hover — used by refresh buttons. */
+.hover-spin-slow {
+  transition: transform 0.35s ease-in-out;
+}
+
+.group:hover .hover-spin-slow,
+.hover-spin-trigger:hover .hover-spin-slow {
+  transform: rotate(45deg);
+}
+
+/* Don't let hover transition fight continuous spin while loading. */
+.animate-spin.hover-spin-slow {
+  transition: none;
 }
