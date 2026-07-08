@@ -27,11 +27,30 @@ export function useSpeedtest() {
       jitterMs: null,
       downloadMbps: null,
       uploadMbps: null,
+      downloadLatencyMs: null,
+      uploadLatencyMs: null,
+      downloadJitterMs: null,
+      uploadJitterMs: null,
     });
     try {
       const r = await runSpeedtest((p) => setProgress(p));
-      setResult(r);
-      setStatus(r.status);
+      const live = useSpeedtestStore.getState().progress;
+      const bestMbps = (
+        final: number | null | undefined,
+        peak: number | null | undefined,
+      ) => {
+        const values = [final, peak].filter(
+          (v): v is number => v != null && v > 0,
+        );
+        return values.length > 0 ? Math.max(...values) : (final ?? peak ?? null);
+      };
+      const patched = {
+        ...r,
+        downloadMbps: bestMbps(r.downloadMbps, live?.downloadMbps),
+        uploadMbps: bestMbps(r.uploadMbps, live?.uploadMbps),
+      };
+      setResult(patched);
+      setStatus(patched.status);
       setProgress(null);
     } catch (err) {
       setResult({
@@ -46,6 +65,12 @@ export function useSpeedtest() {
         uploadMbps: null,
         latencyMs: null,
         jitterMs: null,
+        downloadLatencyMs: null,
+        uploadLatencyMs: null,
+        downloadJitterMs: null,
+        uploadJitterMs: null,
+        downloadStages: [],
+        uploadStages: [],
         error: err instanceof Error ? err.message : String(err),
       });
       setStatus("failed");

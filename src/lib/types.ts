@@ -107,6 +107,12 @@ export interface TracerouteResult {
  * Internet speed test result — download/upload throughput plus latency.
  * (mirrors `SpeedtestResult` in `src-tauri/src/network/speedtest.rs`).
  */
+export interface SpeedStageResult {
+  label: string;
+  bytes: number;
+  samplesMbps: number[];
+}
+
 export interface SpeedtestResult {
   id: string;
   kind: TestKind;
@@ -119,10 +125,26 @@ export interface SpeedtestResult {
   uploadMbps: number | null;
   latencyMs: number | null;
   jitterMs: number | null;
+  downloadLatencyMs: number | null;
+  uploadLatencyMs: number | null;
+  downloadJitterMs: number | null;
+  uploadJitterMs: number | null;
+  downloadStages: SpeedStageResult[];
+  uploadStages: SpeedStageResult[];
   error: string | null;
 }
 
 export type SpeedtestPhase = "latency" | "download" | "upload" | "done";
+
+export interface SpeedSample {
+  direction: "download" | "upload";
+  stageLabel: string;
+  stageIndex: number;
+  stageCount: number;
+  sampleIndex: number;
+  mbps: number;
+  stageDone: boolean;
+}
 
 export type ConnectivityPhase =
   | "handshake"
@@ -297,4 +319,17 @@ export interface SpeedtestProgress {
   jitterMs: number | null;
   downloadMbps: number | null;
   uploadMbps: number | null;
+  downloadLatencyMs?: number | null;
+  uploadLatencyMs?: number | null;
+  downloadJitterMs?: number | null;
+  uploadJitterMs?: number | null;
+  sample?: SpeedSample | null;
+}
+
+/** Live stage bucket used for measurement charts. */
+export interface SpeedStageMeasurements {
+  label: string;
+  bytes: number;
+  samples: number[];
+  done: boolean;
 }

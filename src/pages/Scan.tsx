@@ -7,10 +7,7 @@ export function Scan() {
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden">
       <div className="shrink-0">
-        <PageHeader
-          title={t("scan.title")}
-          description={t("scan.description")}
-        />
+        <PageHeader title={t("scan.title")} description={t("scan.description")} />
       </div>
       <ScanTest />
     </div>

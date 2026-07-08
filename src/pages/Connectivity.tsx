@@ -25,7 +25,7 @@ import {
   ConnectivityMetricsGrid,
   connectivityMetricValues,
 } from "@/features/connectivity/ConnectivityMetrics";
-import { ConnectivitySettingsDialog } from "@/features/connectivity/ConnectivitySettingsPanel";
+import { SettingsDialog } from "@/features/settings/SettingsDialogs";
 
 function hostEndpoint(h: HostRecord): string {
   const port = h.port != null && h.port > 0 ? `:${h.port}` : "";
@@ -76,10 +76,7 @@ export function Connectivity() {
 
   return (
     <div className="flex min-h-[calc(100vh-4rem)] flex-col">
-      <PageHeader
-        title={t("connectivity.title")}
-        description={t("connectivity.description")}
-      />
+      <PageHeader title={t("connectivity.title")} description={t("connectivity.description")} />
 
       {/* ---- Top: the two peer circles (kept identical to Home) ---- */}
       <Card>
@@ -197,9 +194,11 @@ export function Connectivity() {
         )}
       </div>
 
-      {showSettings && (
-        <ConnectivitySettingsDialog onClose={() => setShowSettings(false)} />
-      )}
+      <SettingsDialog
+        open={showSettings}
+        onClose={() => setShowSettings(false)}
+        defaultTab="p2p"
+      />
     </div>
   );
 }

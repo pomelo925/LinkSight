@@ -14,11 +14,14 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 export function useScan() {
   const status = useScanStore((s) => s.status);
   const result = useScanStore((s) => s.result);
+  const lastCidr = useScanStore((s) => s.lastCidr);
   const setStatus = useScanStore((s) => s.setStatus);
   const setResult = useScanStore((s) => s.setResult);
+  const setLastCidr = useScanStore((s) => s.setLastCidr);
 
   const execute = useCallback(
     async (cidr: string): Promise<void> => {
+      setLastCidr(cidr);
       setStatus("running");
       try {
         const r = await runScan(cidr);
@@ -42,8 +45,12 @@ export function useScan() {
         setStatus("failed");
       }
     },
-    [setStatus, setResult],
+    [setStatus, setResult, setLastCidr],
   );
 
-  return { execute, status, result };
+  const refresh = useCallback(async (): Promise<void> => {
+    await execute(lastCidr);
+  }, [execute, lastCidr]);
+
+  return { execute, refresh, status, result, lastCidr };
 }

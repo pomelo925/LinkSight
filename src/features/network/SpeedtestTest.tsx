@@ -1,21 +1,44 @@
-import { memo } from "react";
-import { Download, Upload, Timer, Waves, Gauge } from "lucide-react";
+import { memo, useCallback, useEffect, useRef, useState } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
+import { Download, Upload, Timer, Waves, Gauge, SlidersHorizontal } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { useSpeedtest } from "@/hooks/useSpeedtest";
+import { useTraceroute } from "@/hooks/useTraceroute";
+import { useTracerouteStore } from "@/store/useTracerouteStore";
+import { useTracerouteSettingsStore } from "@/store/useTracerouteSettingsStore";
 import { useI18n } from "@/hooks/useI18n";
 import { formatMs, cn } from "@/lib/utils";
 import type {
   SpeedtestPhase,
   SpeedtestProgress,
   SpeedtestResult,
-  TestStatus,
 } from "@/lib/types";
 import { StatusIndicator } from "./StatusIndicator";
+import { TracerouteResults } from "./TracerouteResults";
+import { SettingsDialog } from "@/features/settings/SettingsDialogs";
+
+type SpeedtestLocationState = {
+  autoRun?: boolean;
+};
 
 function formatMbps(value: number | null | undefined, emptyValue: string): string {
   if (value == null) return emptyValue;
   return value.toFixed(1);
+}
+
+interface DirectionalSubMetric {
+  download: number | null;
+  upload: number | null;
+}
+
+export interface SpeedMetricValues {
+  downloadMbps: number | null;
+  uploadMbps: number | null;
+  latencyMs: number | null;
+  jitterMs: number | null;
+  latency: DirectionalSubMetric;
+  jitter: DirectionalSubMetric;
 }
 
 interface MetricProps {
@@ -24,10 +47,14 @@ interface MetricProps {
   value: string;
   unit: string;
   accent: string;
-  /** Currently being measured — highlight and show the phase progress. */
   active?: boolean;
-  /** 0–1 progress within the phase (only rendered when active). */
   phaseProgress?: number;
+  subMetrics?: {
+    download: string;
+    upload: string;
+    downloadAccent: string;
+    uploadAccent: string;
+  };
 }
 
 const Metric = memo(function Metric({
@@ -38,25 +65,36 @@ const Metric = memo(function Metric({
   accent,
   active,
   phaseProgress,
+  subMetrics,
 }: MetricProps) {
   return (
     <Card className={cn(active && "border-primary/60")}>
-      <CardContent className="relative flex flex-col items-center gap-1 overflow-hidden py-6 text-center">
+      <CardContent className="relative flex flex-col items-center gap-1 overflow-hidden px-3 py-4 text-center">
         <div
           className={cn(
-            "flex items-center gap-2 text-xs font-medium uppercase tracking-wide",
+            "flex items-center gap-1.5 text-sm font-medium uppercase tracking-wide",
             accent,
           )}
         >
-          {/* No pulse animation — continuous animations starve the
-              software-rendered webview during the (long) test. */}
           <Icon className="h-4 w-4" />
           {label}
         </div>
-        <div className="mt-1 flex items-baseline gap-1">
-          <span className="text-4xl font-semibold tabular-nums">{value}</span>
+        <div className="flex items-baseline gap-1">
+          <span className="text-3xl font-semibold tabular-nums">{value}</span>
           {unit && <span className="text-sm text-muted-foreground">{unit}</span>}
         </div>
+        {subMetrics && (
+          <div className="mt-1 flex w-full items-center justify-center gap-4 text-xs tabular-nums">
+            <span className={cn("flex items-center gap-1", subMetrics.downloadAccent)}>
+              <Download className="h-3 w-3" />
+              {subMetrics.download}
+            </span>
+            <span className={cn("flex items-center gap-1", subMetrics.uploadAccent)}>
+              <Upload className="h-3 w-3" />
+              {subMetrics.upload}
+            </span>
+          </div>
+        )}
         {active && (
           <div className="absolute inset-x-0 bottom-0 h-0.5 bg-muted">
             <div
@@ -74,24 +112,12 @@ const Metric = memo(function Metric({
   );
 });
 
-export interface SpeedMetricValues {
-  downloadMbps: number | null;
-  uploadMbps: number | null;
-  latencyMs: number | null;
-  jitterMs: number | null;
-}
-
-/**
- * The four final result blocks (Download / Upload / Latency / Jitter),
- * rendered immediately and filled in metric-by-metric as phases complete.
- */
 export const SpeedMetricsGrid = memo(function SpeedMetricsGrid({
   values,
   activePhase,
   phaseProgress,
 }: {
   values: SpeedMetricValues;
-  /** Phase currently measuring; highlights the matching block. */
   activePhase?: SpeedtestPhase | null;
   phaseProgress?: number;
 }) {
@@ -100,14 +126,16 @@ export const SpeedMetricsGrid = memo(function SpeedMetricsGrid({
   const empty = t("common.emptyValue");
   const mbps = t("common.unit.mbps");
 
+  const fmtMs = (v: number | null) => (v != null ? formatMs(v) : empty);
+
   return (
-    <div className="grid gap-3 sm:grid-cols-2">
+    <div className="grid shrink-0 gap-2 sm:grid-cols-4">
       <Metric
         icon={Download}
         label={t("speedtest.metrics.download")}
         value={formatMbps(values.downloadMbps, empty)}
         unit={mbps}
-        accent="text-primary"
+        accent="text-orange-500"
         active={active("download")}
         phaseProgress={phaseProgress}
       />
@@ -116,7 +144,7 @@ export const SpeedMetricsGrid = memo(function SpeedMetricsGrid({
         label={t("speedtest.metrics.upload")}
         value={formatMbps(values.uploadMbps, empty)}
         unit={mbps}
-        accent="text-success"
+        accent="text-violet-500"
         active={active("upload")}
         phaseProgress={phaseProgress}
       />
@@ -128,6 +156,12 @@ export const SpeedMetricsGrid = memo(function SpeedMetricsGrid({
         accent="text-muted-foreground"
         active={active("latency")}
         phaseProgress={phaseProgress}
+        subMetrics={{
+          download: fmtMs(values.latency.download),
+          upload: fmtMs(values.latency.upload),
+          downloadAccent: "text-orange-500",
+          uploadAccent: "text-violet-500",
+        }}
       />
       <Metric
         icon={Waves}
@@ -137,84 +171,156 @@ export const SpeedMetricsGrid = memo(function SpeedMetricsGrid({
         accent="text-muted-foreground"
         active={active("latency")}
         phaseProgress={phaseProgress}
+        subMetrics={{
+          download: fmtMs(values.jitter.download),
+          upload: fmtMs(values.jitter.upload),
+          downloadAccent: "text-orange-500",
+          uploadAccent: "text-violet-500",
+        }}
       />
     </div>
   );
 });
 
-/** Extract displayable metric values from live progress or a final result. */
 export function speedMetricValues(
   progress: SpeedtestProgress | null,
   result: SpeedtestResult | null,
 ): SpeedMetricValues {
-  if (result) {
+  const src = result ?? progress;
+  if (!src) {
     return {
-      downloadMbps: result.downloadMbps,
-      uploadMbps: result.uploadMbps,
-      latencyMs: result.latencyMs,
-      jitterMs: result.jitterMs,
+      downloadMbps: null,
+      uploadMbps: null,
+      latencyMs: null,
+      jitterMs: null,
+      latency: { download: null, upload: null },
+      jitter: { download: null, upload: null },
     };
   }
+
   return {
-    downloadMbps: progress?.downloadMbps ?? null,
-    uploadMbps: progress?.uploadMbps ?? null,
-    latencyMs: progress?.latencyMs ?? null,
-    jitterMs: progress?.jitterMs ?? null,
+    downloadMbps: src.downloadMbps ?? null,
+    uploadMbps: src.uploadMbps ?? null,
+    latencyMs: src.latencyMs ?? null,
+    jitterMs: src.jitterMs ?? null,
+    latency: {
+      download: src.downloadLatencyMs ?? null,
+      upload: src.uploadLatencyMs ?? null,
+    },
+    jitter: {
+      download: src.downloadJitterMs ?? null,
+      upload: src.uploadJitterMs ?? null,
+    },
   };
 }
 
-function SpeedtestControls({
-  status,
+function SpeedtestToolbar({
+  busy,
   onRun,
+  onOpenSettings,
 }: {
-  status: TestStatus;
+  busy: boolean;
   onRun: () => void;
+  onOpenSettings: () => void;
 }) {
   const { t } = useI18n();
-  const busy = status === "running" || status === "analyzing";
   return (
-    <Card>
-      <CardHeader className="flex-row items-center justify-between space-y-0">
-        <CardTitle>{t("speedtest.form.title")}</CardTitle>
-        <StatusIndicator status={status} />
-      </CardHeader>
-      <CardContent className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <p className="text-sm text-muted-foreground">
-          {t("speedtest.form.description")}
-        </p>
-        <Button onClick={onRun} disabled={busy} className="sm:w-40">
-          <Gauge className="h-4 w-4" />
-          {busy ? t("speedtest.form.testing") : t("speedtest.form.run")}
-        </Button>
-      </CardContent>
-    </Card>
+    <div className="flex items-center justify-start gap-3">
+      <Button size="sm" onClick={onRun} disabled={busy}>
+        <Gauge className="h-4 w-4" />
+        {busy ? t("speedtest.form.testing") : t("speedtest.form.run")}
+      </Button>
+      <Button
+        size="sm"
+        variant="ghost"
+        aria-label={t("common.settings")}
+        onClick={onOpenSettings}
+      >
+        <SlidersHorizontal className="h-4 w-4" />
+        {t("common.settings")}
+      </Button>
+    </div>
   );
 }
 
 export function SpeedtestTest() {
   const { t } = useI18n();
+  const location = useLocation();
+  const navigate = useNavigate();
+  const [showSettings, setShowSettings] = useState(false);
   const { execute, status, progress, result } = useSpeedtest();
   const running = status === "running" || status === "analyzing";
   const failed = !running && result?.status === "failed";
+  const autoStartedRef = useRef(false);
+
+  const {
+    execute: runTrace,
+    status: traceStatus,
+    result: traceResult,
+  } = useTraceroute();
+  const traceHost = useTracerouteSettingsStore((s) => s.traceHost);
+  const traceMaxHops = useTracerouteSettingsStore((s) => s.traceMaxHops);
+  const tracing = traceStatus === "running" || traceStatus === "analyzing";
+
+  const startInternetTest = useCallback(() => {
+    useTracerouteStore.getState().setResult(null);
+    void execute();
+    void runTrace(traceHost, traceMaxHops);
+  }, [execute, runTrace, traceHost, traceMaxHops]);
+
+  // Home → Internet Test with autoRun: start speedtest + traceroute once.
+  useEffect(() => {
+    const state = location.state as SpeedtestLocationState | null;
+    if (!state?.autoRun || autoStartedRef.current || running || tracing) return;
+    autoStartedRef.current = true;
+    startInternetTest();
+    navigate(location.pathname, { replace: true, state: null });
+  }, [location.pathname, location.state, navigate, running, tracing, startInternetTest]);
+
+  const metricValues = speedMetricValues(running ? progress : null, running ? null : result);
 
   return (
-    <div className="space-y-6">
-      <SpeedtestControls status={status} onRun={() => execute()} />
-      {failed ? (
+    <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-hidden">
+      <div className="shrink-0">
         <Card>
-          <CardContent className="py-6">
-            <p className="text-sm text-destructive">
-              {result?.error ?? t("speedtest.failed")}
-            </p>
+          <CardContent className="space-y-4 pt-6">
+            <div className="flex items-center justify-between gap-4">
+              <SpeedtestToolbar
+                busy={running || tracing}
+                onRun={startInternetTest}
+                onOpenSettings={() => setShowSettings(true)}
+              />
+              <StatusIndicator status={status} />
+            </div>
+
+            {failed ? (
+              <p className="text-sm text-destructive">
+                {result?.error ?? t("speedtest.failed")}
+              </p>
+            ) : null}
+
+            <SpeedMetricsGrid
+              values={metricValues}
+              activePhase={running ? progress?.phase : null}
+              phaseProgress={progress?.progress}
+            />
           </CardContent>
         </Card>
-      ) : running || result ? (
-        <SpeedMetricsGrid
-          values={speedMetricValues(running ? progress : null, running ? null : result)}
-          activePhase={running ? progress?.phase : null}
-          phaseProgress={progress?.progress}
-        />
-      ) : null}
+      </div>
+
+      <TracerouteResults
+        className="min-h-0 flex-1"
+        result={traceResult}
+        running={tracing}
+        target={traceHost}
+        onRefresh={() => void runTrace(traceHost, traceMaxHops)}
+      />
+
+      <SettingsDialog
+        open={showSettings}
+        onClose={() => setShowSettings(false)}
+        defaultTab="internet"
+      />
     </div>
   );
 }
