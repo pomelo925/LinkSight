@@ -6,11 +6,13 @@ import {
   File as FileIcon,
   Link2,
   CornerLeftUp,
-  ArrowUp,
+  ArrowLeft,
   RefreshCw,
   HardDrive,
   ChevronRight,
   ChevronDown,
+  ChevronUp,
+  ChevronsUpDown,
   Loader2,
   Search,
   FolderOpen,
@@ -23,8 +25,49 @@ import { cn } from "@/lib/utils";
 import type { FileEntry, FileEntryKind, FileListing } from "@/lib/types";
 import type { FsStatus } from "@/store/useSftpStore";
 
+// Column order: Name → Date → Size → Type
 const COLS =
   "grid grid-cols-[minmax(0,1fr)_9.375rem_6rem_4.5rem] items-center gap-3";
+
+type SortKey = "name" | "size" | "date" | "kind";
+type SortDir = "asc" | "desc";
+
+const KIND_ORDER: Record<FileEntryKind, number> = {
+  dir: 0,
+  symlink: 1,
+  file: 2,
+};
+
+/** Compare two nullable numbers, treating null as the smallest value. */
+function compareNullableNum(a: number | null, b: number | null): number {
+  if (a == null && b == null) return 0;
+  if (a == null) return -1;
+  if (b == null) return 1;
+  return a - b;
+}
+
+function compareEntries(a: FileEntry, b: FileEntry, key: SortKey): number {
+  switch (key) {
+    case "size":
+      return (
+        compareNullableNum(a.size, b.size) ||
+        a.name.toLowerCase().localeCompare(b.name.toLowerCase())
+      );
+    case "date":
+      return (
+        compareNullableNum(a.modified, b.modified) ||
+        a.name.toLowerCase().localeCompare(b.name.toLowerCase())
+      );
+    case "kind":
+      return (
+        KIND_ORDER[a.kind] - KIND_ORDER[b.kind] ||
+        a.name.toLowerCase().localeCompare(b.name.toLowerCase())
+      );
+    case "name":
+    default:
+      return a.name.toLowerCase().localeCompare(b.name.toLowerCase());
+  }
+}
 
 function formatSize(bytes: number | null, t: (key: string) => string): string {
   if (bytes == null) return t("common.emptyValue");
@@ -100,7 +143,9 @@ function Breadcrumb({
   let acc = "";
   return (
     <div className="flex min-w-0 flex-1 items-center gap-0.5 overflow-x-auto">
-      {crumb(<HardDrive className="h-3 w-3" />, "/", "root")}
+      {segments.length === 0 ? (
+        <span className="px-1 py-0.5 text-xs font-medium">/</span>
+      ) : null}
       {segments.map((seg, i) => {
         acc += `/${seg}`;
         const isLast = i === segments.length - 1;
@@ -248,13 +293,47 @@ function FileRow({
           </span>
         </span>
       </span>
-      <span className="truncate text-xs text-muted-foreground">
+      <span className="truncate text-center text-xs text-muted-foreground">
         {formatDate(entry.modified, locale, empty)}
       </span>
-      <span className="text-right text-xs tabular-nums text-muted-foreground">
+      <span className="text-center text-xs tabular-nums text-muted-foreground">
         {formatSize(entry.size, t)}
       </span>
-      <span className="text-xs text-muted-foreground">{kindLabel(entry.kind, t)}</span>
+      <span className="text-center text-xs text-muted-foreground">{kindLabel(entry.kind, t)}</span>
+    </button>
+  );
+}
+
+function SortHeader({
+  label,
+  col,
+  sortKey,
+  sortDir,
+  onSort,
+}: {
+  label: string;
+  col: SortKey;
+  sortKey: SortKey;
+  sortDir: SortDir;
+  onSort: (key: SortKey) => void;
+}) {
+  const active = sortKey === col;
+  const Indicator = !active
+    ? ChevronsUpDown
+    : sortDir === "asc"
+      ? ChevronUp
+      : ChevronDown;
+  return (
+    <button
+      type="button"
+      onClick={() => onSort(col)}
+      className={cn(
+        "flex items-center justify-center gap-1 rounded px-1 py-0.5 uppercase tracking-wide transition-colors hover:text-foreground",
+        active ? "bg-primary/10 text-foreground" : "text-muted-foreground",
+      )}
+    >
+      <span className="truncate">{label}</span>
+      <Indicator className={cn("h-3 w-3 shrink-0", !active && "opacity-40")} />
     </button>
   );
 }
@@ -293,17 +372,32 @@ export function SftpPane({
   const { t } = useI18n();
   const [search, setSearch] = useState("");
   const [selectedPath, setSelectedPath] = useState<string | null>(null);
+  const [sortKey, setSortKey] = useState<SortKey>("kind");
+  const [sortDir, setSortDir] = useState<SortDir>("asc");
   const empty = t("common.emptyValue");
 
   const loading = status === "loading";
   const atRoot = listing?.path === "/";
 
+  const toggleSort = (key: SortKey) => {
+    if (key === sortKey) {
+      setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+    } else {
+      setSortKey(key);
+      setSortDir("asc");
+    }
+  };
+
   const filtered = useMemo(() => {
     if (!listing) return [];
     const q = search.trim().toLowerCase();
-    if (!q) return listing.entries;
-    return listing.entries.filter((e) => e.name.toLowerCase().includes(q));
-  }, [listing, search]);
+    const base = q
+      ? listing.entries.filter((e) => e.name.toLowerCase().includes(q))
+      : listing.entries;
+    const sorted = [...base].sort((a, b) => compareEntries(a, b, sortKey));
+    if (sortDir === "desc") sorted.reverse();
+    return sorted;
+  }, [listing, search, sortKey, sortDir]);
 
   const selected = listing?.entries.find((e) => e.path === selectedPath) ?? null;
 
@@ -355,16 +449,27 @@ export function SftpPane({
           aria-label={t("sftp.nav.up")}
           onClick={onUp}
         >
-          <ArrowUp className="h-3.5 w-3.5" />
+          <ArrowLeft className="h-3.5 w-3.5" />
+        </Button>
+        <Button
+          size="icon"
+          variant="ghost"
+          className="hover-spin-trigger h-7 w-7"
+          aria-label={t("sftp.nav.refresh")}
+          disabled={loading}
+          onClick={onRefresh}
+        >
+          <RefreshCw className={cn("h-3.5 w-3.5", loading ? "animate-spin" : "hover-spin-slow")} />
         </Button>
         <Button
           size="icon"
           variant="ghost"
           className="h-7 w-7"
-          aria-label={t("sftp.nav.refresh")}
-          onClick={onRefresh}
+          disabled={atRoot || !listing}
+          aria-label={t("sftp.nav.home")}
+          onClick={() => onNavigate("/")}
         >
-          <RefreshCw className={cn("h-3.5 w-3.5", loading && "animate-spin")} />
+          <HardDrive className="h-3.5 w-3.5" />
         </Button>
         <div className="mx-0.5 h-4 w-px bg-border" />
         {listing ? (
@@ -374,17 +479,17 @@ export function SftpPane({
         )}
       </div>
 
-      {/* Column header */}
+      {/* Column header — click to sort */}
       <div
         className={cn(
           COLS,
           "shrink-0 border-b border-border px-2 py-1.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground",
         )}
       >
-        <span>{t("sftp.columns.name")}</span>
-        <span>{t("sftp.columns.dateModified")}</span>
-        <span className="text-right">{t("sftp.columns.size")}</span>
-        <span>{t("sftp.columns.kind")}</span>
+        <SortHeader label={t("sftp.columns.name")} col="name" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} />
+        <SortHeader label={t("sftp.columns.dateModified")} col="date" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} />
+        <SortHeader label={t("sftp.columns.size")} col="size" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} />
+        <SortHeader label={t("sftp.columns.type")} col="kind" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} />
       </div>
 
       {/* Scrollable file list — only internal scroll */}

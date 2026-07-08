@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { Monitor, Server } from "lucide-react";
+import { PageHeader } from "@/components/layout/PageHeader";
 import { HostPicker } from "@/features/network/HostPicker";
 import {
   SftpPane,
@@ -251,10 +252,9 @@ export function Sftp() {
   };
 
   return (
-    <div className="flex h-full flex-col overflow-hidden">
-      <div className="mb-2 shrink-0">
-        <h1 className="text-lg font-semibold tracking-tight">{t("sftp.title")}</h1>
-        <p className="text-xs text-muted-foreground">{t("sftp.description")}</p>
+    <div className="flex h-full min-h-0 flex-col overflow-hidden">
+      <div className="shrink-0">
+        <PageHeader title={t("sftp.title")} description={t("sftp.description")} />
       </div>
 
       <div className="relative flex min-h-0 flex-1 gap-2">
