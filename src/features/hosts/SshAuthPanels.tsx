@@ -1,9 +1,11 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { CenterDialog } from "@/components/ui/center-dialog";
+import { LocalKeyFsBrowser } from "@/features/hosts/LocalKeyFsBrowser";
 import { useI18n } from "@/hooks/useI18n";
 import { cn } from "@/lib/utils";
 import { persistSshKeyFile, readLocalKeyFile } from "@/lib/api";
+import type { FileEntry } from "@/lib/types";
 
 export type SshKeyPanelKind = "private" | "public";
 
@@ -27,7 +29,7 @@ interface SshKeyInputPanelProps {
   onClose: () => void;
 }
 
-/** Unified key dialog: fixed title/description, Browse, paste area, OK. */
+/** Large dual-pane key dialog: local file browser + editable key text + OK/Cancel. */
 export function SshKeyInputPanel({
   kind,
   draft,
@@ -35,7 +37,6 @@ export function SshKeyInputPanel({
   onClose,
 }: SshKeyInputPanelProps) {
   const { t } = useI18n();
-  const fileRef = useRef<HTMLInputElement>(null);
 
   const title =
     kind === "private" ? t("hosts.sshKey.private.title") : t("hosts.sshKey.public.title");
@@ -47,11 +48,15 @@ export function SshKeyInputPanel({
     kind === "private"
       ? t("hosts.sshKey.private.placeholder")
       : t("hosts.sshKey.public.placeholder");
-  const accept = kind === "public" ? ".pub,text/plain" : "";
 
   const [text, setText] = useState(draft.text);
   const [path, setPath] = useState(draft.path);
   const [fromFile, setFromFile] = useState(draft.fromFile);
+  /** Exact contents last loaded from disk — used for pristine (gray) vs edited (white). */
+  const [sourceText, setSourceText] = useState<string | null>(
+    draft.fromFile && draft.text.trim() ? draft.text.trim() : null,
+  );
+  const [sourcePath, setSourcePath] = useState<string | null>(draft.fromFile ? draft.path : null);
   const [saving, setSaving] = useState(false);
   const [loadingFile, setLoadingFile] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -60,6 +65,8 @@ export function SshKeyInputPanel({
     setText(draft.text);
     setPath(draft.path);
     setFromFile(draft.fromFile);
+    setSourceText(draft.fromFile && draft.text.trim() ? draft.text.trim() : null);
+    setSourcePath(draft.fromFile ? draft.path : null);
     setError(null);
     setLoadingFile(false);
 
@@ -67,7 +74,10 @@ export function SshKeyInputPanel({
       setLoadingFile(true);
       void readLocalKeyFile(draft.path)
         .then((content) => {
-          setText(content.trim());
+          const trimmed = content.trim();
+          setText(trimmed);
+          setSourceText(trimmed);
+          setSourcePath(draft.path);
           setFromFile(true);
         })
         .catch((err) => {
@@ -77,33 +87,39 @@ export function SshKeyInputPanel({
     }
   }, [kind, draft.path, draft.text, draft.fromFile]);
 
-  const pickFile = () => fileRef.current?.click();
-
-  const onFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    const filePath = (file as File & { path?: string }).path ?? file.name;
-    const reader = new FileReader();
-    reader.onload = () => {
-      const content =
-        typeof reader.result === "string" ? reader.result.trim() : "";
+  const loadFile = async (entry: FileEntry) => {
+    setLoadingFile(true);
+    setError(null);
+    try {
+      const content = (await readLocalKeyFile(entry.path)).trim();
       setText(content);
-      setPath(filePath);
+      setPath(entry.path);
+      setSourceText(content);
+      setSourcePath(entry.path);
       setFromFile(true);
-      setError(null);
-    };
-    reader.readAsText(file);
-    e.target.value = "";
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setLoadingFile(false);
+    }
   };
 
   const onTextChange = (value: string) => {
     setText(value);
+    setError(null);
+    // Reverted to the loaded file → treat as pristine again.
+    if (sourceText !== null && value === sourceText) {
+      setFromFile(true);
+      setPath(sourcePath);
+      return;
+    }
+    // Edited (or free-typed paste) → commit path will persist on OK if private.
     setFromFile(false);
     setPath(null);
-    setError(null);
   };
 
   const hasContent = text.trim().length > 0;
+  const showingOriginal = !loadingFile && sourceText !== null && text === sourceText;
 
   const handleOk = async () => {
     if (!hasContent) return;
@@ -126,51 +142,59 @@ export function SshKeyInputPanel({
   };
 
   return (
-    <CenterDialog open onClose={onClose} title={title} className="max-w-sm">
-      <div className="space-y-4">
-        <p className="text-xs leading-snug text-muted-foreground">{description}</p>
+    <CenterDialog
+      open
+      onClose={onClose}
+      title={title}
+      className="flex h-[min(85vh,40rem)] w-full max-w-5xl flex-col"
+      bodyClassName="flex min-h-0 flex-1 flex-col overflow-hidden p-0 pt-2"
+    >
+      <div className="flex min-h-0 flex-1 flex-col gap-3 px-5 pb-4">
+        <p className="shrink-0 text-xs leading-snug text-muted-foreground">{description}</p>
 
-        <input
-          ref={fileRef}
-          type="file"
-          accept={accept}
-          className="hidden"
-          onChange={onFileChange}
-        />
-        <Button type="button" variant="secondary" className="w-full" onClick={pickFile}>
-          {t("common.browse")}
-        </Button>
+        <div className="grid min-h-0 flex-1 gap-3 lg:grid-cols-2">
+          <div className="min-h-0 min-w-0">
+            <LocalKeyFsBrowser onPickFile={(entry) => void loadFile(entry)} />
+          </div>
 
-        <textarea
-          rows={8}
-          placeholder={loadingFile ? t("hosts.sshKey.loading") : placeholder}
-          value={text}
-          readOnly={fromFile || loadingFile}
-          onChange={(e) => onTextChange(e.target.value)}
-          className={cn(
-            "w-full resize-none rounded-md border border-input bg-background px-3 py-2 font-mono text-xs placeholder:text-muted-foreground",
-            fromFile || loadingFile
-              ? "cursor-default bg-muted/40 text-muted-foreground"
-              : "hover:border-primary/50 focus-visible:border-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-          )}
-          spellCheck={false}
-        />
+          <div className="flex min-h-0 min-w-0 flex-col gap-2">
+            <div className="flex shrink-0 items-baseline justify-between gap-2">
+              <p className="text-sm font-semibold">{t("hosts.sshKey.input.title")}</p>
+              {fromFile && path && (
+                <p
+                  className="max-w-[60%] truncate font-mono text-[10px] text-muted-foreground"
+                  title={path}
+                >
+                  {path}
+                </p>
+              )}
+            </div>
+            <textarea
+              placeholder={loadingFile ? t("hosts.sshKey.loading") : placeholder}
+              value={text}
+              disabled={loadingFile}
+              onChange={(e) => onTextChange(e.target.value)}
+              className={cn(
+                "min-h-0 w-full flex-1 resize-none rounded-md border border-input bg-background px-3 py-2 font-mono text-xs placeholder:text-muted-foreground",
+                "hover:border-primary/50 focus-visible:border-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                loadingFile && "cursor-wait bg-muted/40",
+                showingOriginal || loadingFile
+                  ? "text-muted-foreground"
+                  : "text-foreground",
+              )}
+              spellCheck={false}
+            />
+          </div>
+        </div>
 
-        {fromFile && path && (
-          <p className="truncate font-mono text-[10px] text-muted-foreground" title={path}>
-            {path}
-          </p>
-        )}
+        {error && <p className="shrink-0 text-xs text-destructive">{error}</p>}
 
-        {error && <p className="text-xs text-destructive">{error}</p>}
-
-        <div className="flex gap-2">
-          <Button type="button" variant="outline" className="flex-1" onClick={onClose}>
+        <div className="flex shrink-0 justify-end gap-2 border-t border-border pt-3">
+          <Button type="button" variant="outline" onClick={onClose}>
             {t("common.cancel")}
           </Button>
           <Button
             type="button"
-            className="flex-1"
             disabled={!hasContent || saving || loadingFile}
             onClick={() => void handleOk()}
           >

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
 import { ShieldCheck, Loader2, X, Save, FileKey, KeyRound } from "lucide-react";
 import { InfoHint } from "@/components/ui/info-hint";
 import { Button } from "@/components/ui/button";
@@ -63,6 +63,16 @@ export function HostEditor({
     useState<PrivateKeyValidation | null>(null);
   const [publicKeyValidation, setPublicKeyValidation] =
     useState<PublicKeyValidation | null>(null);
+
+  const scrollRef = useRef<HTMLDivElement>(null);
+  /** Keep drawer scroll put across verify re-renders (badge / results). */
+  const pinnedScrollTop = useRef<number | null>(null);
+
+  useLayoutEffect(() => {
+    if (pinnedScrollTop.current == null || !scrollRef.current) return;
+    scrollRef.current.scrollTop = pinnedScrollTop.current;
+    if (!verifying) pinnedScrollTop.current = null;
+  }, [verifying, verify, privateKeyValidation, publicKeyValidation, error]);
 
   const sshMode = form.authMode !== "password";
 
@@ -153,6 +163,7 @@ export function HostEditor({
   };
 
   const handleVerify = async () => {
+    pinnedScrollTop.current = scrollRef.current?.scrollTop ?? 0;
     setVerifying(true);
     setVerify(null);
     setError(null);
@@ -253,7 +264,45 @@ export function HostEditor({
         </Button>
       </div>
 
-      <div className="flex-1 space-y-3 overflow-y-auto px-4 py-3">
+      <div
+        ref={scrollRef}
+        className="flex-1 space-y-3 overflow-y-auto px-4 py-3"
+        onScroll={() => {
+          if (pinnedScrollTop.current != null && scrollRef.current) {
+            pinnedScrollTop.current = scrollRef.current.scrollTop;
+          }
+        }}
+      >
+        {/* Login mode as top tabs */}
+        <div
+          role="tablist"
+          aria-label={t("hosts.editor.loginMode")}
+          className="flex gap-1 border-b border-border"
+        >
+          {(["ssh", "password"] as const).map((mode) => (
+            <button
+              key={mode}
+              type="button"
+              role="tab"
+              aria-selected={form.authMode === mode}
+              onClick={() => {
+                set({ authMode: mode });
+                onKeyPanelChange(null);
+                if (mode === "password") onFirstTimeDeployChange(false);
+              }}
+              className={cn(
+                "-mb-px rounded-t-md border border-b-0 px-4 py-2 text-sm font-medium transition-colors",
+                "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                form.authMode === mode
+                  ? "border-border bg-card text-foreground"
+                  : "border-transparent text-muted-foreground hover:text-foreground",
+              )}
+            >
+              {mode === "ssh" ? t("hosts.editor.auth.ssh") : t("hosts.editor.auth.password")}
+            </button>
+          ))}
+        </div>
+
         <Field label={t("hosts.editor.alias")}>
           <Input
             value={form.alias}
@@ -280,51 +329,45 @@ export function HostEditor({
             spellCheck={false}
           />
         </Field>
-
-        <Field label={t("hosts.editor.loginMode")}>
-          <div className="grid grid-cols-2 gap-2">
-            {(["ssh", "password"] as const).map((mode) => (
-              <button
-                key={mode}
-                type="button"
-                onClick={() => {
-                  set({ authMode: mode });
-                  onKeyPanelChange(null);
-                  if (mode === "password") onFirstTimeDeployChange(false);
-                }}
-                className={cn(
-                  "rounded-md border px-3 py-2 text-xs font-medium capitalize",
-                  "hover:border-primary/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                  form.authMode === mode
-                    ? "border-primary bg-primary/10 text-primary"
-                    : "border-input text-muted-foreground",
-                )}
-              >
-                {mode === "ssh" ? t("hosts.editor.auth.ssh") : t("hosts.editor.auth.password")}
-              </button>
-            ))}
-          </div>
+        <Field label={t("hosts.editor.port")}>
+          <Input
+            type="text"
+            inputMode="numeric"
+            value={portText}
+            onChange={(e) => {
+              setPortText(e.target.value.replace(/[^\d]/g, ""));
+              setVerify(null);
+            }}
+            placeholder={t("hosts.editor.portPlaceholder")}
+            autoComplete="off"
+            spellCheck={false}
+            className="[appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+          />
         </Field>
+
+        <div className="border-t border-border/50" role="separator" />
 
         {sshMode ? (
           <>
-            <Field label={t("hosts.editor.port")}>
-              <Input
-                type="text"
-                inputMode="numeric"
-                value={portText}
-                onChange={(e) => {
-                  setPortText(e.target.value.replace(/[^\d]/g, ""));
-                  setVerify(null);
-                }}
-                placeholder={t("hosts.editor.portPlaceholder")}
-                autoComplete="off"
-                spellCheck={false}
-                className="[appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
-              />
-            </Field>
-
-            <Field label={t("hosts.editor.privateKey")}>
+            <Field
+              label={t("hosts.editor.privateKey")}
+              trailing={
+                privateKeyValidation ? (
+                  <Badge
+                    variant={privateKeyValidation.valid ? "success" : "destructive"}
+                    title={
+                      privateKeyValidation.fingerprint ??
+                      privateKeyValidation.message ??
+                      undefined
+                    }
+                  >
+                    {privateKeyValidation.valid
+                      ? t("common.valid")
+                      : t("common.invalid")}
+                  </Badge>
+                ) : null
+              }
+            >
               <FieldTrigger
                 icon={<KeyRound className="h-4 w-4" />}
                 label={privateLabel || t("hosts.sshKey.private.prompt")}
@@ -393,7 +436,25 @@ export function HostEditor({
                       autoComplete="new-password"
                     />
                   </Field>
-                  <Field label={t("hosts.editor.publicKey")}>
+                  <Field
+                    label={t("hosts.editor.publicKey")}
+                    trailing={
+                      publicKeyValidation && authFields.sshPublicKey ? (
+                        <Badge
+                          variant={publicKeyValidation.valid ? "success" : "destructive"}
+                          title={
+                            publicKeyValidation.fingerprint ??
+                            publicKeyValidation.message ??
+                            undefined
+                          }
+                        >
+                          {publicKeyValidation.valid
+                            ? t("common.valid")
+                            : t("common.invalid")}
+                        </Badge>
+                      ) : null
+                    }
+                  >
                     <FieldTrigger
                       icon={<FileKey className="h-4 w-4" />}
                       label={publicLabel || t("hosts.sshKey.public.prompt")}
@@ -406,39 +467,15 @@ export function HostEditor({
             </div>
           </>
         ) : (
-          <div className="grid grid-cols-2 gap-3">
-            <Field label={t("hosts.editor.password")}>
-              <Input
-                type="password"
-                value={form.password ?? ""}
-                onChange={(e) => set({ password: e.target.value })}
-                placeholder={t("hosts.editor.passwordPlaceholder")}
-                autoComplete="new-password"
-              />
-            </Field>
-            <Field label={t("hosts.editor.port")}>
-              <Input
-                type="text"
-                inputMode="numeric"
-                value={portText}
-                onChange={(e) => {
-                  setPortText(e.target.value.replace(/[^\d]/g, ""));
-                  setVerify(null);
-                }}
-                placeholder={t("hosts.editor.portPlaceholder")}
-                autoComplete="off"
-                spellCheck={false}
-                className="[appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
-              />
-            </Field>
-          </div>
-        )}
-
-        {privateKeyValidation && sshMode && (
-          <KeyValidationCard title={t("hosts.editor.validation.privateKey")} validation={privateKeyValidation} />
-        )}
-        {publicKeyValidation && sshMode && firstTimeDeploy && authFields.sshPublicKey && (
-          <KeyValidationCard title={t("hosts.editor.validation.publicKey")} validation={publicKeyValidation} />
+          <Field label={t("hosts.editor.password")}>
+            <Input
+              type="password"
+              value={form.password ?? ""}
+              onChange={(e) => set({ password: e.target.value })}
+              placeholder={t("hosts.editor.passwordPlaceholder")}
+              autoComplete="new-password"
+            />
+          </Field>
         )}
 
         <Button
@@ -453,6 +490,17 @@ export function HostEditor({
             <ShieldCheck className="h-4 w-4" />
           )}
           {verifying ? t("hosts.editor.verifying") : t("hosts.editor.verifyConnection")}
+        </Button>
+
+        {error && <p className="text-xs text-destructive">{error}</p>}
+
+        <Button className="w-full" disabled={!canSubmit || saving} onClick={handleSave}>
+          {saving ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : (
+            <Save className="h-4 w-4" />
+          )}
+          {saving ? t("common.saving") : t("hosts.editor.saveHost")}
         </Button>
 
         {verify && (
@@ -492,54 +540,26 @@ export function HostEditor({
             )}
           </div>
         )}
-
-        {error && <p className="text-xs text-destructive">{error}</p>}
-
-        <Button className="w-full" disabled={!canSubmit || saving} onClick={handleSave}>
-          {saving ? (
-            <Loader2 className="h-4 w-4 animate-spin" />
-          ) : (
-            <Save className="h-4 w-4" />
-          )}
-          {saving ? t("common.saving") : t("hosts.editor.saveHost")}
-        </Button>
       </div>
     </div>
   );
 }
 
-function KeyValidationCard({
-  title,
-  validation,
+function Field({
+  label,
+  trailing,
+  children,
 }: {
-  title: string;
-  validation: PrivateKeyValidation | PublicKeyValidation;
+  label: string;
+  trailing?: React.ReactNode;
+  children: React.ReactNode;
 }) {
-  const { t } = useI18n();
-  return (
-    <div className="rounded-lg border border-border/60 px-3 py-2 text-xs">
-      <div className="flex items-center justify-between">
-        <span className="text-muted-foreground">{title}</span>
-        <Badge variant={validation.valid ? "success" : "destructive"}>
-          {validation.valid ? t("common.valid") : t("common.invalid")}
-        </Badge>
-      </div>
-      {validation.fingerprint && (
-        <p className="mt-1 truncate font-mono text-[10px] text-muted-foreground">
-          {validation.fingerprint}
-        </p>
-      )}
-      {validation.message && (
-        <p className="mt-1 text-destructive">{validation.message}</p>
-      )}
-    </div>
-  );
-}
-
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="space-y-1.5">
-      <label className="text-xs font-medium text-muted-foreground">{label}</label>
+      <div className="flex min-h-5 items-center justify-between gap-2">
+        <label className="text-xs font-medium text-muted-foreground">{label}</label>
+        {trailing}
+      </div>
       {children}
     </div>
   );
