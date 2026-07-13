@@ -4,7 +4,7 @@
 
 # LinkSight
 
-快速測試**單機對外連線**或**兩機之間通訊**的桌面 App。
+A lightweight desktop app for quick **single-host internet** and **two-host peer** connectivity checks.
 
 [中文](README.md) · [English](README-en.md)
 
@@ -13,16 +13,16 @@
 
 <br />
 
-<!-- Homepage animation GIFs — 檔案就緒後放入 assets/ -->
+<!-- Homepage animation GIFs — drop files into assets/ when ready -->
 <table>
   <tr>
     <td align="center" width="50%">
       <!-- <img src="assets/homepage-internet.gif" alt="Internet Connectivity animation" width="100%" /> -->
-      <p><em>Homepage · Internet Connectivity<br />（GIF 預留空位）</em></p>
+      <p><em>Homepage · Internet Connectivity<br />(GIF placeholder)</em></p>
     </td>
     <td align="center" width="50%">
       <!-- <img src="assets/homepage-p2p.gif" alt="Peer-to-Peer animation" width="100%" /> -->
-      <p><em>Homepage · Peer-to-Peer<br />（GIF 預留空位）</em></p>
+      <p><em>Homepage · Peer-to-Peer<br />(GIF placeholder)</em></p>
     </td>
   </tr>
 </table>
@@ -32,35 +32,35 @@
 
 <br /><br />
 
-## 1. 如何運行
+## 1. How to run
 
-目前**僅支援 Linux**。到 [Releases](https://github.com/pomelo925/LinkSight/releases/latest) 下載即可使用：
+**Linux only** for now. Download from [Releases](https://github.com/pomelo925/LinkSight/releases/latest):
 
-- **`.deb`** — Ubuntu / Debian。安裝後即可在應用程式列表（app list）中找到：
+- **`.deb`** — Ubuntu / Debian. After install, it appears in your app list:
 
   ```bash
   sudo dpkg -i LinkSight_*.deb
   ```
 
-  或：
+  or:
 
   ```bash
   sudo apt install ./LinkSight_*.deb
   ```
 
-- **`.AppImage`** — 多數發行版通用：
+- **`.AppImage`** — works on most distros:
 
   ```bash
   chmod +x LinkSight_*_amd64.AppImage
   ./LinkSight_*_amd64.AppImage
   ```
 
-> 部分發行版（例如 Ubuntu 22.04+）執行 AppImage 可能需要 `libfuse2`。
+> Some distros (e.g. Ubuntu 22.04+) may need `libfuse2` to run AppImage.
 
 
 <br /><br />
 
-## 2. 功能
+## 2. Features
 
 <table>
   <tr>
@@ -85,16 +85,16 @@
   </tr>
 </table>
 
-- **Internet Connectivity** — 測試本機對外下載／上傳、延遲與路由。
-- **LAN Scan** — 掃描區域網路，找出附近裝置。
-- **Peer-to-Peer** — 診斷本機與另一台主機之間的連線品質。
-- **SFTP** — 在本機與遠端主機之間瀏覽並傳輸檔案。
+- **Internet Connectivity** — Test download / upload, latency, and route from this machine.
+- **LAN Scan** — Discover devices on the local network.
+- **Peer-to-Peer** — Diagnose connectivity quality between this machine and another host.
+- **SFTP** — Browse and transfer files between local and remote hosts.
 
 ---
 
 <div align="center">
 
-### 主題顏色
+### Theme colors
 
 <table>
   <tr>
@@ -124,26 +124,26 @@
 
 <br /><br />
 
-## 3. 開發
+## 3. Development
 
-建議使用 Docker 開發環境：
+Docker is the recommended development path:
 
 ```bash
-./run.sh dev      # 啟動容器並執行 Tauri app（熱重載）
-./run.sh shell    # 進入容器 shell（除錯用）
-./run.sh down     # 停止並移除開發容器
+./run.sh dev      # Start the container and launch the Tauri app (hot reload)
+./run.sh shell    # Open a container shell (debugging)
+./run.sh down     # Stop and remove the development container
 ```
 
-需求：Docker & Docker Compose，和可用的 X server。
+Requires Docker, Docker Compose, and a working X server.
 
 
 <br /><br />
 
-## 4. 貢獻
+## 4. Contribution
 
-歡迎貢獻！請見 [CONTRIBUTING.md](CONTRIBUTING.md)。
+Contributions are welcome! See [CONTRIBUTING.md](CONTRIBUTING.md).
 
-主要流程：fork 本 repo → 開 branch 修改 → 發 PR 。
+Main workflow: fork the repo → branch your changes → open a Pull Request.
 
 
 <br /><br />
