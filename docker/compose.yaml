@@ -12,12 +12,16 @@ x-common-settings: &common
 
   volumes:
     # GUI support (Tauri desktop window renders on the host X server)
-    - "${XAUTHORITY:-$HOME/.Xauthority}:${XAUTHORITY:-/root/.Xauthority}"
+    - "${XAUTHORITY:-$HOME/.Xauthority}:${XAUTHORITY:-$HOME/.Xauthority}"
     - "/tmp/.X11-unix:/tmp/.X11-unix"
     - "/etc/localtime:/etc/localtime:ro"
 
     # Source tree (live editing from the host)
     - "..:/workspace"
+
+    # Host home so local FS / SSH key browsing matches the real machine
+    # (~, ~/.ssh, /home/<user>, …). Without this, the container's /home is empty.
+    - "${HOME}:${HOME}"
 
     # Persist cargo & npm caches across container restarts
     - "linksight-cargo-registry:/usr/local/cargo/registry"
@@ -26,6 +30,8 @@ x-common-settings: &common
   environment:
     - DISPLAY=${DISPLAY:-:0}
     - RUST_LOG=info
+    # Use the host user's home inside the container (matches the volume mount).
+    - HOME=${HOME}
     # Suppress harmless GTK / GL / a11y noise when rendering via host X11
     - NO_AT_BRIDGE=1
     - GTK_MODULES=
