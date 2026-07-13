@@ -132,14 +132,19 @@ const en: Messages = {
   "hosts.sshKey.private.title": "SSH Private Key",
   "hosts.sshKey.private.description":
     "Select your local private key file (e.g. id_ed25519). The path is stored on this machine only — the key itself is never saved in the database.",
-  "hosts.sshKey.private.placeholder": "-----BEGIN OPENSSH PRIVATE KEY-----\n…",
+  "hosts.sshKey.private.placeholder": "-----BEGIN OPENSSH PRIVATE KEY-----",
   "hosts.sshKey.public.title": "SSH Public Key",
   "hosts.sshKey.public.description":
     "Only needed on first connect when your key is not on the server yet. Leave empty to derive from the private key. A password is required to deploy the key (ssh-copy-id).",
-  "hosts.sshKey.public.placeholder": "ssh-ed25519 AAAA… comment",
+  "hosts.sshKey.public.placeholder": "ssh-ed25519 AAAA…",
   "hosts.sshKey.loading": "Loading key file…",
   "hosts.sshKey.private.prompt": "Select private key…",
   "hosts.sshKey.public.prompt": "Select public key…",
+  "hosts.sshKey.actions.select": "Select",
+  "hosts.sshKey.browser.title": "This machine",
+  "hosts.sshKey.browser.subtitle": "Browse and select a key file",
+  "hosts.sshKey.browser.pathPlaceholder": "Path (Enter to open)",
+  "hosts.sshKey.input.title": "Key contents",
 
   // Host picker
   "hostPicker.empty": "No saved hosts.",
@@ -254,6 +259,27 @@ const en: Messages = {
   "connectivity.metrics.hops": "Hops",
   "connectivity.metrics.bdp": "BDP",
   "connectivity.metrics.bdpHint": "bandwidth × delay",
+  "connectivity.metrics.info.aria": "About {metric}",
+  "connectivity.metrics.info.handshake":
+    "Times a TCP connect to the peer’s SSH port until the connection succeeds (or times out). Lower is faster session setup; high values often mean congestion, firewall delay, or a distant host.",
+  "connectivity.metrics.info.rttAvg":
+    "From the system ping summary (min/avg/max/mdev) over the configured packet count. Avg is the mean of successful RTT samples; the card also shows that run’s min and max.",
+  "connectivity.metrics.info.jitter":
+    "Taken from ping’s mdev field: the mean deviation of all successful RTT samples in the same ping run (how widely those RTTs spread around the average). Low mdev means stable latency; high values hurt VoIP, gaming, and real-time streams.",
+  "connectivity.metrics.info.packetLoss":
+    "From ping statistics: lost packets ÷ packets sent × 100. Sustained loss usually means congestion, faulty links, or filtering, and forces retransmits that slow applications.",
+  "connectivity.metrics.info.pathMtu":
+    "Probed with DF (don’t-fragment) ICMP pings, binary-searching the largest payload that still gets a reply, then adding IPv4 (20 B) + ICMP (8 B) headers. Max payload is that successful ICMP data size.",
+  "connectivity.metrics.info.hops":
+    "Number of hop lines returned by traceroute toward the peer (up to the configured max hops). More hops usually means a longer routed path; sudden changes can hint at alternate routing or a VPN.",
+  "connectivity.metrics.info.uplink":
+    "iperf3 client on this machine sending to an iperf3 server started on the peer over SSH. Reports achievable send throughput under the current streams / protocol settings.",
+  "connectivity.metrics.info.downlink":
+    "iperf3 in reverse mode: the peer sends while this machine receives. Reports achievable receive throughput under the current streams / protocol settings.",
+  "connectivity.metrics.info.delay":
+    "One-way estimate set to half of the measured average RTT (avg RTT ÷ 2), assuming a roughly symmetric path. Use it as a rough single-direction travel time, not a separate probe.",
+  "connectivity.metrics.info.bdp":
+    "Computed from measured throughput × average RTT (prefer downlink Mbps, else uplink), converted to bytes in flight. Higher BDP means the path needs larger buffers / windows to stay fully utilized.",
 
   // Connectivity settings
   "connectivity.settings.title": "Connectivity test settings",
@@ -327,6 +353,11 @@ const en: Messages = {
   // Settings
   "settings.title": "Settings",
   "settings.save": "Save settings",
+  "settings.validation.required": "This field is required.",
+  "settings.validation.invalidNumber": "Enter a whole number.",
+  "settings.validation.invalidNumberRange": "Invalid number range!",
+  "settings.validation.hostRequired": "Enter a hostname or IP.",
+  "settings.validation.invalidHost": "Invalid hostname or IP!",
   "settings.description": "Application preferences and diagnostics configuration.",
   "settings.tabs.general": "General",
   "settings.tabs.internet": "Internet",
@@ -356,12 +387,12 @@ const en: Messages = {
   "settings.traceroute.maxHopsLabel": "Max hops",
   "settings.traceroute.range.hops": "1–64",
   "settings.traceroute.maxHopsHint": "Set to 1 to measure only the first hop (your router / parent node).",
-  "settings.traceroute.preset.cloudflare": "Cloudflare Speed",
-  "settings.traceroute.preset.cfDns": "1.1.1.1",
-  "settings.traceroute.preset.googleDns": "8.8.8.8",
-  "settings.traceroute.preset.gateway": "Gateway only",
+  "settings.traceroute.preset.cloudflare": "Cloudflare",
+  "settings.traceroute.preset.cfDns": "Cloudflare DNS",
+  "settings.traceroute.preset.googleDns": "Google DNS",
+  "settings.traceroute.preset.custom": "Custom",
   "settings.about.title": "About",
-  "settings.about.version": "LinkSight v0.3.0",
+  "settings.about.version": "LinkSight v{version}",
   "settings.about.stack": "Built with Tauri v2, React, and a Tokio-async Rust core.",
   "settings.about.copyright": "© 2026 pomelo925",
 };
@@ -480,14 +511,19 @@ const zhTW: Messages = {
   "hosts.sshKey.private.title": "SSH 私鑰",
   "hosts.sshKey.private.description":
     "選擇本機私鑰檔案（例如 id_ed25519）。路徑僅儲存於本機 — 金鑰本身不會寫入資料庫。",
-  "hosts.sshKey.private.placeholder": "-----BEGIN OPENSSH PRIVATE KEY-----\n…",
+  "hosts.sshKey.private.placeholder": "-----BEGIN OPENSSH PRIVATE KEY-----",
   "hosts.sshKey.public.title": "SSH 公鑰",
   "hosts.sshKey.public.description":
     "僅在首次連線且伺服器尚未有您的金鑰時需要。留空則從私鑰推導。部署金鑰（ssh-copy-id）需要密碼。",
-  "hosts.sshKey.public.placeholder": "ssh-ed25519 AAAA… 註解",
+  "hosts.sshKey.public.placeholder": "ssh-ed25519 AAAA…",
   "hosts.sshKey.loading": "載入金鑰檔案中…",
   "hosts.sshKey.private.prompt": "選擇私鑰…",
   "hosts.sshKey.public.prompt": "選擇公鑰…",
+  "hosts.sshKey.actions.select": "選擇",
+  "hosts.sshKey.browser.title": "本機",
+  "hosts.sshKey.browser.subtitle": "瀏覽並選擇金鑰檔案",
+  "hosts.sshKey.browser.pathPlaceholder": "路徑（Enter 開啟）",
+  "hosts.sshKey.input.title": "金鑰內容",
 
   "hostPicker.empty": "尚無已儲存的主機。",
   "hostPicker.addHost": "新增主機",
@@ -590,6 +626,27 @@ const zhTW: Messages = {
   "connectivity.metrics.hops": "跳數",
   "connectivity.metrics.bdp": "BDP",
   "connectivity.metrics.bdpHint": "頻寬 × 延遲",
+  "connectivity.metrics.info.aria": "關於 {metric}",
+  "connectivity.metrics.info.handshake":
+    "量測對端 SSH 埠完成一次 TCP connect 所需時間（逾時則無值）。越低表示連線建立越快；偏高常見於壅塞、防火牆延遲或主機距離較遠。",
+  "connectivity.metrics.info.rttAvg":
+    "取自系統 ping 摘要列（min/avg/max/mdev），樣本數由設定的 ping 封包數決定。Avg 是成功 RTT 樣本的平均值；卡片上的最小／最大即同一次測試的 min／max。",
+  "connectivity.metrics.info.jitter":
+    "取自 ping 的 mdev：同一輪 ping 中，所有成功 RTT 相對平均值的平均偏差（RTT 離散程度）。mdev 低代表延遲穩定；偏高即使平均 RTT 正常，仍可能影響語音、遊戲與即時串流。",
+  "connectivity.metrics.info.packetLoss":
+    "取自 ping 統計：遺失封包數 ÷ 送出封包數 × 100。持續遺失通常代表壅塞、鏈路異常或過濾，並會觸發重傳而拖慢應用。",
+  "connectivity.metrics.info.pathMtu":
+    "以設 DF（不可分片）的 ICMP ping 對可通過的最大 payload 做二分搜尋，成功後再加上 IPv4（20 B）與 ICMP（8 B）標頭得到路徑 MTU。最大承載即該次成功的 ICMP 資料長度。",
+  "connectivity.metrics.info.hops":
+    "統計 traceroute 回傳的 hop 列數（不超過設定的最大跳數）。跳數越多通常路徑越長；突然變化可能暗示繞路或 VPN。",
+  "connectivity.metrics.info.uplink":
+    "本機執行 iperf3 client，對透過 SSH 在對端啟動的 iperf3 server 送流量。回報在目前串流數／協定設定下可達到的上行吞吐。",
+  "connectivity.metrics.info.downlink":
+    "iperf3 反向模式：對端送、本機收。回報在目前串流數／協定設定下可達到的下行吞吐。",
+  "connectivity.metrics.info.delay":
+    "單向延遲估値 = 平均 RTT ÷ 2（假設路徑大致對稱）。用來粗估單向傳遞時間，並非另一次獨立探測。",
+  "connectivity.metrics.info.bdp":
+    "由量測到的吞吐 × 平均 RTT 計算（優先用下行 Mbps，否則用上行），再換算成「在途」位元組數。BDP 越高，通常需要更大緩衝／視窗才能把鏈路吃滿。",
 
   "connectivity.settings.title": "連線測試設定",
   "connectivity.settings.stages": "階段",
@@ -659,6 +716,11 @@ const zhTW: Messages = {
 
   "settings.title": "設定",
   "settings.save": "儲存設定",
+  "settings.validation.required": "此欄位為必填。",
+  "settings.validation.invalidNumber": "請輸入整數。",
+  "settings.validation.invalidNumberRange": "數字範圍無效！",
+  "settings.validation.hostRequired": "請輸入主機名稱或 IP。",
+  "settings.validation.invalidHost": "主機名稱或 IP 無效！",
   "settings.description": "應用程式偏好設定與診斷相關選項。",
   "settings.tabs.general": "一般",
   "settings.tabs.internet": "對外測試",
@@ -686,12 +748,12 @@ const zhTW: Messages = {
   "settings.traceroute.maxHopsLabel": "最大跳數",
   "settings.traceroute.range.hops": "1–64",
   "settings.traceroute.maxHopsHint": "設為 1 僅測第一跳（路由器／上游父節點）。",
-  "settings.traceroute.preset.cloudflare": "Cloudflare 測速",
-  "settings.traceroute.preset.cfDns": "1.1.1.1",
-  "settings.traceroute.preset.googleDns": "8.8.8.8",
-  "settings.traceroute.preset.gateway": "僅閘道",
+  "settings.traceroute.preset.cloudflare": "Cloudflare",
+  "settings.traceroute.preset.cfDns": "Cloudflare DNS",
+  "settings.traceroute.preset.googleDns": "Google DNS",
+  "settings.traceroute.preset.custom": "自訂",
   "settings.about.title": "關於",
-  "settings.about.version": "LinkSight v0.3.0",
+  "settings.about.version": "LinkSight v{version}",
   "settings.about.stack": "使用 Tauri v2、React 與 Tokio 非同步 Rust 核心建構。",
   "settings.about.copyright": "© 2026 pomelo925",
 };
