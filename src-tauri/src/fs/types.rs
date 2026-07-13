@@ -46,7 +46,11 @@ pub fn parent_path(path: &str) -> Option<String> {
     }
     let trimmed = path.trim_end_matches('/');
     let parent = trimmed.rsplit_once('/')?.0;
-    Some(if parent.is_empty() { "/".into() } else { parent.into() })
+    Some(if parent.is_empty() {
+        "/".into()
+    } else {
+        parent.into()
+    })
 }
 
 pub fn format_permissions(mode: u32, is_dir: bool, is_symlink: bool) -> String {

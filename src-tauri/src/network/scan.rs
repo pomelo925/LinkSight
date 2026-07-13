@@ -394,10 +394,7 @@ fn is_ipv4_cidr(s: &str) -> bool {
         _ => return false,
     };
     let _ = mask;
-    addr.split('.').count() == 4
-        && addr
-            .split('.')
-            .all(|o| o.parse::<u8>().is_ok())
+    addr.split('.').count() == 4 && addr.split('.').all(|o| o.parse::<u8>().is_ok())
 }
 
 fn validate_target(target: &str) -> Result<()> {

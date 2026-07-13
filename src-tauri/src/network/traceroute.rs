@@ -88,7 +88,11 @@ pub async fn traceroute(host: &str, max_hops: u32) -> Result<TracerouteResult> {
             started_at,
             duration_ms,
             hops: Vec::new(),
-            raw: Some(if stderr.is_empty() { stdout } else { stderr.clone() }),
+            raw: Some(if stderr.is_empty() {
+                stdout
+            } else {
+                stderr.clone()
+            }),
             error: Some(if stderr.trim().is_empty() {
                 format!("traceroute to {host} failed")
             } else {

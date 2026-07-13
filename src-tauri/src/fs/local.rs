@@ -72,10 +72,10 @@ fn entry_from_path(path: &Path, name: &str) -> Result<FileEntry> {
         modified,
         permissions,
         mode,
-        uid: uid.map(|u| u as u32),
-        gid: gid.map(|g| g as u32),
-        owner: uid.map(|u| owner_name(u as u32)),
-        group: gid.map(|g| group_name(g as u32)),
+        uid,
+        gid,
+        owner: uid.map(owner_name),
+        group: gid.map(group_name),
     })
 }
 

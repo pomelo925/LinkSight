@@ -39,9 +39,7 @@ pub trait RemoteProvider: Send + Sync {
     fn metrics(&self) -> impl std::future::Future<Output = Result<RemoteMetrics>> + Send;
 
     /// Run a bandwidth test against this remote (spins up an iperf3 server-side).
-    fn bandwidth(
-        &self,
-    ) -> impl std::future::Future<Output = Result<NetworkTestResult>> + Send;
+    fn bandwidth(&self) -> impl std::future::Future<Output = Result<NetworkTestResult>> + Send;
 }
 
 /// Placeholder resolver — chooses a provider for a transport. Not yet wired.

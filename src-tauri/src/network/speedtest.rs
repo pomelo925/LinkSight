@@ -19,16 +19,7 @@ use crate::error::{LinkSightError, Result};
 const DOWN_URL: &str = "https://speed.cloudflare.com/__down";
 const UP_URL: &str = "https://speed.cloudflare.com/__up";
 
-/// Shared ramp-up stages (Cloudflare Speed Test — identical for both directions).
-const SHARED_STAGES: &[usize] = &[100_000, 1_000_000, 10_000_000, 25_000_000];
-const SHARED_STAGE_REPS: &[u32] = &[10, 8, 6, 4];
-/// Download-only tail stages (Cloudflare: 100 MB × 3, 250 MB × 2).
-const DOWNLOAD_TAIL_STAGES: &[usize] = &[100_000_000, 250_000_000];
-const DOWNLOAD_TAIL_REPS: &[u32] = &[3, 2];
-/// Upload-only tail stage (Cloudflare: 50 MB × 3).
-const UPLOAD_TAIL_STAGES: &[usize] = &[50_000_000];
-const UPLOAD_TAIL_REPS: &[u32] = &[3];
-
+/// Download stages (Cloudflare Speed Test: shared ramp-up + 100 MB × 3, 250 MB × 2).
 const DOWNLOAD_STAGES: &[usize] = &[
     100_000,
     1_000_000,
@@ -37,13 +28,8 @@ const DOWNLOAD_STAGES: &[usize] = &[
     100_000_000,
     250_000_000,
 ];
-const UPLOAD_STAGES: &[usize] = &[
-    100_000,
-    1_000_000,
-    10_000_000,
-    25_000_000,
-    50_000_000,
-];
+/// Upload stages (Cloudflare Speed Test: shared ramp-up + 50 MB × 3).
+const UPLOAD_STAGES: &[usize] = &[100_000, 1_000_000, 10_000_000, 25_000_000, 50_000_000];
 const DOWNLOAD_STAGE_REPS: &[u32] = &[10, 8, 6, 4, 3, 2];
 const UPLOAD_STAGE_REPS: &[u32] = &[10, 8, 6, 4, 3];
 const UPLOAD_CHUNK: usize = 1024 * 1024;
@@ -423,10 +409,8 @@ async fn measure_download_latency(
             .map_err(|e| LinkSightError::CommandFailed(e.to_string()))?;
         samples.push(t.elapsed().as_secs_f64() * 1000.0);
 
-        let mut p = SpeedtestProgress::phase(
-            "latency",
-            (i + 1) as f64 / (LATENCY_SAMPLES * 2) as f64,
-        );
+        let mut p =
+            SpeedtestProgress::phase("latency", (i + 1) as f64 / (LATENCY_SAMPLES * 2) as f64);
         p.download_latency_ms = Some(samples.iter().sum::<f64>() / samples.len() as f64);
         p.download_jitter_ms = Some(jitter_from_samples(&samples));
         emit(ch, p);
@@ -760,20 +744,23 @@ mod tests {
 
     #[test]
     fn download_upload_share_warmup_profile() {
-        assert_eq!(&DOWNLOAD_STAGES[..SHARED_STAGES.len()], SHARED_STAGES);
-        assert_eq!(&UPLOAD_STAGES[..SHARED_STAGES.len()], SHARED_STAGES);
+        // Cloudflare shared ramp-up: 100kB×10, 1MB×8, 10MB×6, 25MB×4.
+        const SHARED_LEN: usize = 4;
+        assert_eq!(&DOWNLOAD_STAGES[..SHARED_LEN], &UPLOAD_STAGES[..SHARED_LEN]);
         assert_eq!(
-            &DOWNLOAD_STAGE_REPS[..SHARED_STAGE_REPS.len()],
-            SHARED_STAGE_REPS
+            &DOWNLOAD_STAGE_REPS[..SHARED_LEN],
+            &UPLOAD_STAGE_REPS[..SHARED_LEN]
         );
         assert_eq!(
-            &UPLOAD_STAGE_REPS[..SHARED_STAGE_REPS.len()],
-            SHARED_STAGE_REPS
+            &DOWNLOAD_STAGES[..SHARED_LEN],
+            &[100_000, 1_000_000, 10_000_000, 25_000_000]
         );
-        assert_eq!(DOWNLOAD_TAIL_STAGES, &DOWNLOAD_STAGES[SHARED_STAGES.len()..]);
-        assert_eq!(DOWNLOAD_TAIL_REPS, &DOWNLOAD_STAGE_REPS[SHARED_STAGE_REPS.len()..]);
-        assert_eq!(UPLOAD_TAIL_STAGES, &UPLOAD_STAGES[SHARED_STAGES.len()..]);
-        assert_eq!(UPLOAD_TAIL_REPS, &UPLOAD_STAGE_REPS[SHARED_STAGE_REPS.len()..]);
+        assert_eq!(&DOWNLOAD_STAGE_REPS[..SHARED_LEN], &[10, 8, 6, 4]);
+        // Direction-specific tails.
+        assert_eq!(&DOWNLOAD_STAGES[SHARED_LEN..], &[100_000_000, 250_000_000]);
+        assert_eq!(&DOWNLOAD_STAGE_REPS[SHARED_LEN..], &[3, 2]);
+        assert_eq!(&UPLOAD_STAGES[SHARED_LEN..], &[50_000_000]);
+        assert_eq!(&UPLOAD_STAGE_REPS[SHARED_LEN..], &[3]);
     }
 
     #[test]

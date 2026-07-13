@@ -386,12 +386,7 @@ pub async fn connectivity_test(
 /// TCP connect time (ms) to the SSH port, or `None` if unreachable.
 async fn measure_handshake(addr: &str) -> Option<f64> {
     let t = Instant::now();
-    match tokio::time::timeout(
-        Duration::from_secs(5),
-        tokio::net::TcpStream::connect(addr),
-    )
-    .await
-    {
+    match tokio::time::timeout(Duration::from_secs(5), tokio::net::TcpStream::connect(addr)).await {
         Ok(Ok(_)) => Some(t.elapsed().as_secs_f64() * 1000.0),
         _ => None,
     }
@@ -421,7 +416,17 @@ async fn measure_max_payload(ip: &str) -> Option<u32> {
 /// Single DF ping with `size` payload bytes. Returns true if it got a reply.
 async fn ping_df(ip: &str, size: u32) -> bool {
     Command::new("ping")
-        .args(["-c", "1", "-W", "1", "-M", "do", "-s", &size.to_string(), ip])
+        .args([
+            "-c",
+            "1",
+            "-W",
+            "1",
+            "-M",
+            "do",
+            "-s",
+            &size.to_string(),
+            ip,
+        ])
         .output()
         .await
         .map(|o| o.status.success())
@@ -499,8 +504,8 @@ async fn measure_iperf(
         .map_err(|e| format!("spawn local iperf3 (is it installed?): {e}"))?;
 
     let stdout = String::from_utf8_lossy(&output.stdout);
-    let json: Value = serde_json::from_str(&stdout)
-        .map_err(|e| format!("parse iperf3 JSON: {e}"))?;
+    let json: Value =
+        serde_json::from_str(&stdout).map_err(|e| format!("parse iperf3 JSON: {e}"))?;
 
     if let Some(err) = json.get("error").and_then(Value::as_str) {
         return Err(err.to_string());
@@ -519,7 +524,10 @@ async fn measure_iperf(
     let bps = json
         .pointer(primary)
         .and_then(Value::as_f64)
-        .or_else(|| json.pointer("/end/sum/bits_per_second").and_then(Value::as_f64))
+        .or_else(|| {
+            json.pointer("/end/sum/bits_per_second")
+                .and_then(Value::as_f64)
+        })
         .or_else(|| {
             json.pointer("/end/sum_received/bits_per_second")
                 .and_then(Value::as_f64)

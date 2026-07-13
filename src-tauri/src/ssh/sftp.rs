@@ -45,11 +45,7 @@ fn is_hidden(name: &str) -> bool {
     name.starts_with('.')
 }
 
-fn entry_from_remote(
-    base: &str,
-    name: &str,
-    meta: &russh_sftp::client::fs::Metadata,
-) -> FileEntry {
+fn entry_from_remote(base: &str, name: &str, meta: &russh_sftp::client::fs::Metadata) -> FileEntry {
     let is_dir = meta.is_dir();
     let is_symlink = meta.is_symlink();
     let kind = if is_dir {
@@ -164,11 +160,7 @@ pub async fn set_permissions(target: &SshTarget, path: &str, mode: u32) -> Resul
     .await
 }
 
-pub async fn upload_file(
-    target: &SshTarget,
-    local_path: &str,
-    remote_dir: &str,
-) -> Result<()> {
+pub async fn upload_file(target: &SshTarget, local_path: &str, remote_dir: &str) -> Result<()> {
     let data = local::read_file(local_path)?;
     let name = std::path::Path::new(local_path)
         .file_name()
@@ -195,11 +187,7 @@ pub async fn upload_file(
     .await
 }
 
-pub async fn download_file(
-    target: &SshTarget,
-    remote_path: &str,
-    local_dir: &str,
-) -> Result<()> {
+pub async fn download_file(target: &SshTarget, remote_path: &str, local_dir: &str) -> Result<()> {
     let name = std::path::Path::new(remote_path)
         .file_name()
         .and_then(|n| n.to_str())

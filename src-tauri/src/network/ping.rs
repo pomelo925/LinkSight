@@ -33,7 +33,11 @@ pub async fn ping(host: &str, count: u32) -> Result<NetworkTestResult> {
     result.duration_ms = started.elapsed().as_millis() as u64;
     let stdout = String::from_utf8_lossy(&output.stdout).to_string();
     let stderr = String::from_utf8_lossy(&output.stderr).to_string();
-    result.raw = Some(if stdout.is_empty() { stderr.clone() } else { stdout.clone() });
+    result.raw = Some(if stdout.is_empty() {
+        stderr.clone()
+    } else {
+        stdout.clone()
+    });
 
     if !output.status.success() {
         result.status = TestStatus::Failed;

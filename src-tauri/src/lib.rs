@@ -74,7 +74,9 @@ pub fn run() {
                 match Db::connect(&db_path).await {
                     Ok(db) => Some(db),
                     Err(e) => {
-                        tracing::warn!("SQLite storage unavailable ({e}); running without persistence");
+                        tracing::warn!(
+                            "SQLite storage unavailable ({e}); running without persistence"
+                        );
                         None
                     }
                 }

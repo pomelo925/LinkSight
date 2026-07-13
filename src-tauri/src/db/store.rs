@@ -281,10 +281,8 @@ mod tests {
 
     #[tokio::test]
     async fn hosts_persist_across_db_reconnect() {
-        let path = std::env::temp_dir().join(format!(
-            "linksight-host-test-{}.db",
-            uuid::Uuid::new_v4()
-        ));
+        let path =
+            std::env::temp_dir().join(format!("linksight-host-test-{}.db", uuid::Uuid::new_v4()));
         let path_str = path.to_string_lossy().to_string();
 
         let id = uuid::Uuid::new_v4().to_string();
@@ -318,10 +316,8 @@ mod tests {
 
     #[tokio::test]
     async fn host_exists_detects_saved_rows() {
-        let path = std::env::temp_dir().join(format!(
-            "linksight-host-exists-{}.db",
-            uuid::Uuid::new_v4()
-        ));
+        let path =
+            std::env::temp_dir().join(format!("linksight-host-exists-{}.db", uuid::Uuid::new_v4()));
         let path_str = path.to_string_lossy().to_string();
         let id = uuid::Uuid::new_v4().to_string();
 

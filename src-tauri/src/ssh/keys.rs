@@ -2,8 +2,8 @@
 
 use std::path::Path;
 
-use russh::keys::{load_secret_key, PrivateKeyWithHashAlg, ssh_key::PublicKey};
 use russh::keys::ssh_key::HashAlg;
+use russh::keys::{load_secret_key, ssh_key::PublicKey, PrivateKeyWithHashAlg};
 
 use crate::error::{LinkSightError, Result};
 
@@ -66,8 +66,7 @@ fn load_private_key(path: &str) -> std::result::Result<russh::keys::PrivateKey, 
 }
 
 fn parse_public_key_text(text: &str) -> std::result::Result<PublicKey, String> {
-    PublicKey::from_openssh(text.trim())
-        .map_err(|e| format!("invalid OpenSSH public key: {e}"))
+    PublicKey::from_openssh(text.trim()).map_err(|e| format!("invalid OpenSSH public key: {e}"))
 }
 
 fn fingerprint(key: &PublicKey) -> String {

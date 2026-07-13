@@ -8,6 +8,8 @@ use tauri::State;
 
 use crate::db::store::HostRecord;
 use crate::error::LinkSightError;
+use crate::fs::local as local_fs;
+use crate::fs::types::FileListing;
 use crate::network::connectivity::{
     self, ConnectivityProgress, ConnectivityResult, ConnectivitySettings,
 };
@@ -16,8 +18,6 @@ use crate::network::ping;
 use crate::network::scan::{self, ScanResult};
 use crate::network::speedtest::{self, SpeedtestProgress, SpeedtestResult};
 use crate::network::traceroute::{self, TracerouteResult};
-use crate::fs::local as local_fs;
-use crate::fs::types::FileListing;
 use crate::ssh::exec::SshTarget;
 use crate::ssh::keys::{PrivateKeyValidation, PublicKeyValidation};
 use crate::ssh::sftp;
@@ -200,6 +200,7 @@ pub fn local_set_permissions(path: String, mode: u32) -> Result<(), LinkSightErr
 }
 
 /// List a remote directory over SFTP.
+#[allow(clippy::too_many_arguments)]
 #[tauri::command]
 pub async fn sftp_list_dir(
     ip: String,
@@ -243,6 +244,7 @@ pub async fn sftp_mkdir(
     sftp::mkdir(&target, &path).await
 }
 
+#[allow(clippy::too_many_arguments)]
 #[tauri::command]
 pub async fn sftp_rename(
     ip: String,
@@ -265,6 +267,7 @@ pub async fn sftp_rename(
     sftp::rename(&target, &old_path, &new_path).await
 }
 
+#[allow(clippy::too_many_arguments)]
 #[tauri::command]
 pub async fn sftp_remove(
     ip: String,
@@ -287,6 +290,7 @@ pub async fn sftp_remove(
     sftp::remove(&target, &path, &kind).await
 }
 
+#[allow(clippy::too_many_arguments)]
 #[tauri::command]
 pub async fn sftp_set_permissions(
     ip: String,
@@ -309,6 +313,7 @@ pub async fn sftp_set_permissions(
     sftp::set_permissions(&target, &path, mode).await
 }
 
+#[allow(clippy::too_many_arguments)]
 #[tauri::command]
 pub async fn sftp_upload(
     ip: String,
@@ -331,6 +336,7 @@ pub async fn sftp_upload(
     sftp::upload_file(&target, &local_path, &remote_dir).await
 }
 
+#[allow(clippy::too_many_arguments)]
 #[tauri::command]
 pub async fn sftp_download(
     ip: String,
@@ -355,17 +361,14 @@ pub async fn sftp_download(
 
 /// List the host's network interfaces (system module).
 #[tauri::command]
-pub async fn list_network_interfaces(
-) -> Result<Vec<InterfaceInfo>, crate::error::LinkSightError> {
+pub async fn list_network_interfaces() -> Result<Vec<InterfaceInfo>, crate::error::LinkSightError> {
     list_interfaces()
 }
 
 // ---- Saved hosts (Termius-style host manager) --------------------------------
 
 #[tauri::command]
-pub async fn list_hosts(
-    state: State<'_, AppState>,
-) -> Result<Vec<HostRecord>, LinkSightError> {
+pub async fn list_hosts(state: State<'_, AppState>) -> Result<Vec<HostRecord>, LinkSightError> {
     require_db(&state)?.list_hosts().await
 }
 
@@ -375,9 +378,7 @@ pub async fn save_host(
     mut host: HostRecord,
     state: State<'_, AppState>,
 ) -> Result<HostRecord, LinkSightError> {
-    if host.alias.trim().is_empty()
-        || host.username.trim().is_empty()
-        || host.ip.trim().is_empty()
+    if host.alias.trim().is_empty() || host.username.trim().is_empty() || host.ip.trim().is_empty()
     {
         return Err(LinkSightError::InvalidInput(
             "alias, username and ip are required".into(),
@@ -393,7 +394,7 @@ pub async fn save_host(
         && host
             .ssh_private_key_path
             .as_ref()
-            .is_none_or(|p| p.trim().is_empty())
+            .map_or(true, |p| p.trim().is_empty())
     {
         return Err(LinkSightError::InvalidInput(
             "private key path is required for SSH login mode".into(),
@@ -414,16 +415,15 @@ pub async fn save_host(
 }
 
 #[tauri::command]
-pub async fn delete_host(
-    id: String,
-    state: State<'_, AppState>,
-) -> Result<(), LinkSightError> {
+pub async fn delete_host(id: String, state: State<'_, AppState>) -> Result<(), LinkSightError> {
     require_db(&state)?.delete_host(&id).await
 }
 
 /// Validate a local private-key file (format + fingerprint). No network I/O.
 #[tauri::command]
-pub async fn validate_ssh_private_key(path: String) -> Result<PrivateKeyValidation, LinkSightError> {
+pub async fn validate_ssh_private_key(
+    path: String,
+) -> Result<PrivateKeyValidation, LinkSightError> {
     Ok(verify::validate_ssh_private_key(&path))
 }
 

@@ -66,8 +66,8 @@ async fn authenticate(
             .await
             .unwrap_or(None)
             .flatten();
-        let key = private_key_with_hash(Path::new(path.trim()), rsa_hash)
-            .map_err(|e| e.to_string())?;
+        let key =
+            private_key_with_hash(Path::new(path.trim()), rsa_hash).map_err(|e| e.to_string())?;
         session
             .authenticate_publickey(&target.username, key)
             .await
@@ -136,7 +136,7 @@ pub async fn run_remote_command(
         })
     };
 
-    tokio::time::timeout(timeout, fut)
-        .await
-        .map_err(|_| LinkSightError::CommandFailed(format!("remote command timed out after {timeout:?}")))?
+    tokio::time::timeout(timeout, fut).await.map_err(|_| {
+        LinkSightError::CommandFailed(format!("remote command timed out after {timeout:?}"))
+    })?
 }

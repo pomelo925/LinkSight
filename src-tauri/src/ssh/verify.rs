@@ -89,7 +89,7 @@ pub async fn verify_host(
     let ssh_mode = auth_mode != "password";
 
     if ssh_mode {
-        if ssh_private_key_path.is_none_or(|p| p.trim().is_empty()) {
+        if ssh_private_key_path.map_or(true, |p| p.trim().is_empty()) {
             return Err(LinkSightError::InvalidInput(
                 "private key path is required for SSH login mode".into(),
             ));
@@ -128,7 +128,11 @@ pub async fn verify_host(
     match tokio::time::timeout(CONNECT_TIMEOUT, tokio::net::TcpStream::connect(&addr)).await {
         Ok(Ok(_)) => {}
         Ok(Err(e)) => {
-            return Ok(fail_tcp(start, Some(format!("TCP connect failed: {e}")), private_check));
+            return Ok(fail_tcp(
+                start,
+                Some(format!("TCP connect failed: {e}")),
+                private_check,
+            ));
         }
         Err(_) => {
             return Ok(fail_tcp(
@@ -140,21 +144,20 @@ pub async fn verify_host(
     }
 
     if !ssh_mode {
-        return finish_password_auth(&config, &addr, username, password.unwrap(), start, None).await;
+        return finish_password_auth(&config, &addr, username, password.unwrap(), start, None)
+            .await;
     }
 
     let private_path = Path::new(ssh_private_key_path.unwrap().trim());
 
     // Stage 2: try public-key auth
     match try_publickey_auth(&config, &addr, username, private_path, start).await {
-        Ok(r) => {
-            return Ok(VerifyResult {
-                public_key_fingerprint: private_check.as_ref().and_then(|c| c.fingerprint.clone()),
-                auth_method: Some("publickey".into()),
-                key_deployed: Some(false),
-                ..r
-            });
-        }
+        Ok(r) => Ok(VerifyResult {
+            public_key_fingerprint: private_check.as_ref().and_then(|c| c.fingerprint.clone()),
+            auth_method: Some("publickey".into()),
+            key_deployed: Some(false),
+            ..r
+        }),
         Err(key_err) => {
             if !has_password {
                 return Ok(VerifyResult {
@@ -164,7 +167,9 @@ pub async fn verify_host(
                     message: Some(format!(
                         "{key_err} — provide a password to deploy your public key on first connect"
                     )),
-                    public_key_fingerprint: private_check.as_ref().and_then(|c| c.fingerprint.clone()),
+                    public_key_fingerprint: private_check
+                        .as_ref()
+                        .and_then(|c| c.fingerprint.clone()),
                     auth_method: None,
                     key_deployed: Some(false),
                     public_key_valid: None,
@@ -182,7 +187,9 @@ pub async fn verify_host(
                         authenticated: false,
                         latency_ms: None,
                         message: Some(format!("{key_err}; deploy skipped: {e}")),
-                        public_key_fingerprint: private_check.as_ref().and_then(|c| c.fingerprint.clone()),
+                        public_key_fingerprint: private_check
+                            .as_ref()
+                            .and_then(|c| c.fingerprint.clone()),
                         auth_method: None,
                         key_deployed: Some(false),
                         public_key_valid: None,
@@ -190,21 +197,17 @@ pub async fn verify_host(
                 }
             };
 
-            if let Err(e) = deploy_public_key(
-                &config,
-                &addr,
-                username,
-                password.unwrap(),
-                &pub_line,
-            )
-            .await
+            if let Err(e) =
+                deploy_public_key(&config, &addr, username, password.unwrap(), &pub_line).await
             {
                 return Ok(VerifyResult {
                     reachable: true,
                     authenticated: false,
                     latency_ms: None,
                     message: Some(format!("{key_err}; deploy failed: {e}")),
-                    public_key_fingerprint: private_check.as_ref().and_then(|c| c.fingerprint.clone()),
+                    public_key_fingerprint: private_check
+                        .as_ref()
+                        .and_then(|c| c.fingerprint.clone()),
                     auth_method: None,
                     key_deployed: Some(false),
                     public_key_valid: Some(true),
@@ -214,7 +217,9 @@ pub async fn verify_host(
             // Retry public-key auth after deploy
             match try_publickey_auth(&config, &addr, username, private_path, start).await {
                 Ok(r) => Ok(VerifyResult {
-                    public_key_fingerprint: private_check.as_ref().and_then(|c| c.fingerprint.clone()),
+                    public_key_fingerprint: private_check
+                        .as_ref()
+                        .and_then(|c| c.fingerprint.clone()),
                     auth_method: Some("publickey".into()),
                     key_deployed: Some(true),
                     message: Some("Public key deployed to authorized_keys (ssh-copy-id)".into()),
@@ -228,7 +233,9 @@ pub async fn verify_host(
                     message: Some(format!(
                         "key deployed but authentication still failed: {retry_err}"
                     )),
-                    public_key_fingerprint: private_check.as_ref().and_then(|c| c.fingerprint.clone()),
+                    public_key_fingerprint: private_check
+                        .as_ref()
+                        .and_then(|c| c.fingerprint.clone()),
                     auth_method: None,
                     key_deployed: Some(true),
                     public_key_valid: Some(true),
@@ -335,8 +342,7 @@ async fn try_publickey_auth(
             .await
             .unwrap_or(None)
             .flatten();
-        let auth_key = private_key_with_hash(private_path, rsa_hash)
-            .map_err(|e| e.to_string())?;
+        let auth_key = private_key_with_hash(private_path, rsa_hash).map_err(|e| e.to_string())?;
         session
             .authenticate_publickey(username, auth_key)
             .await
@@ -355,10 +361,9 @@ async fn try_publickey_auth(
             auth_method: None,
             key_deployed: None,
         }),
-        Ok(Ok(AuthResult::Failure { .. })) => Err(
-            "public-key authentication rejected — key may not be on the server yet"
-                .into(),
-        ),
+        Ok(Ok(AuthResult::Failure { .. })) => {
+            Err("public-key authentication rejected — key may not be on the server yet".into())
+        }
         Ok(Err(msg)) => Err(msg),
         Err(_) => Err(format!("SSH auth timed out after {AUTH_TIMEOUT:?}")),
     }

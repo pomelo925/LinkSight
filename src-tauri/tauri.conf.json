@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "LinkSight",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "identifier": "com.linksight.app",
   "build": {
     "frontendDist": "../dist",
@@ -30,7 +30,10 @@
   },
   "bundle": {
     "active": true,
-    "targets": ["appimage", "deb"],
+    "targets": [
+      "appimage",
+      "deb"
+    ],
     "category": "Utility",
     "shortDescription": "Network diagnostics & connectivity analysis",
     "longDescription": "LinkSight is a Linux-first network analysis and connectivity intelligence platform with SSH capabilities.",
@@ -44,7 +47,12 @@
     ],
     "linux": {
       "deb": {
-        "depends": ["iputils-ping", "traceroute", "iproute2", "nmap"],
+        "depends": [
+          "iputils-ping",
+          "traceroute",
+          "iproute2",
+          "nmap"
+        ],
         "desktopTemplate": "linksight.desktop"
       }
     }
