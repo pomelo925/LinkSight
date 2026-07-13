@@ -20,6 +20,7 @@ import { useConnectivity } from "@/hooks/useConnectivity";
 import { useHostSelection } from "@/hooks/useHostSelection";
 import { useI18n } from "@/hooks/useI18n";
 import { isTauri } from "@/lib/tauri";
+import { cn } from "@/lib/utils";
 import type { ConnectivityPhase, HostRecord } from "@/lib/types";
 import {
   ConnectivityMetricsGrid,
@@ -75,13 +76,39 @@ export function Connectivity() {
   const values = connectivityMetricValues(running ? progress : null, running ? null : resultForHost);
 
   return (
-    <div className="flex min-h-[calc(100vh-4rem)] flex-col">
-      <PageHeader title={t("connectivity.title")} description={t("connectivity.description")} />
+    <div className="flex h-full min-h-0 flex-col overflow-hidden">
+      <div className="shrink-0">
+        <PageHeader title={t("connectivity.title")} description={t("connectivity.description")} />
+      </div>
 
-      {/* ---- Top: the two peer circles (kept identical to Home) ---- */}
-      <Card>
-        <CardContent className="py-8">
-          <div className="flex flex-col items-center justify-center gap-8 lg:flex-row lg:gap-12">
+      {/* ---- Top: compact peer row; run control top-left, status top-right ---- */}
+      <Card className="shrink-0">
+        <CardContent className="relative px-4 py-5 sm:px-6">
+          {selectedHost && (
+            <div className="absolute left-4 top-4 z-10 sm:left-5 sm:top-5">
+              <Button
+                size="sm"
+                disabled={running || !isTauri()}
+                onClick={() => execute(selectedHost)}
+              >
+                <Activity className="h-4 w-4" />
+                {resultForHost
+                  ? t("connectivity.actions.runAgain")
+                  : t("connectivity.actions.runTest")}
+              </Button>
+            </div>
+          )}
+
+          <div className="absolute right-4 top-4 z-10 sm:right-5 sm:top-5">
+            <StatusIndicator status={status} />
+          </div>
+
+          <div
+            className={cn(
+              "flex flex-col items-center justify-center gap-6 lg:flex-row lg:gap-10",
+              selectedHost && "pt-14 lg:pt-2",
+            )}
+          >
             <HostCircle icon={Monitor} title="127.0.0.1" subtitle={t("common.thisMachine")} />
             <div className="hidden items-center text-muted-foreground lg:flex">
               <ArrowLeftRight className="h-6 w-6" />
@@ -111,87 +138,75 @@ export function Connectivity() {
         </CardContent>
       </Card>
 
-      {/* ---- Below: live analysis and final metrics ---- */}
-      <div className="mt-6 space-y-4">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <h2 className="text-sm font-semibold text-muted-foreground">
-              {t("connectivity.analysis.title")}
-            </h2>
-            {running && progress && (
-              <span className="text-xs text-muted-foreground">
-                {phaseLabel(progress.phase)}
-              </span>
-            )}
-          </div>
-          <div className="flex items-center gap-3">
-            <StatusIndicator status={status} />
-            <Button
-              size="sm"
-              variant="ghost"
-              aria-label={t("connectivity.actions.testSettings")}
-              onClick={() => setShowSettings(true)}
-            >
-              <SlidersHorizontal className="h-4 w-4" />
-              {t("common.settings")}
-            </Button>
-            {selectedHost && (
-              <Button
-                size="sm"
-                disabled={running || !isTauri()}
-                onClick={() => execute(selectedHost)}
-              >
-                <Activity className="h-4 w-4" />
-                {resultForHost ? t("connectivity.actions.runAgain") : t("connectivity.actions.runTest")}
-              </Button>
-            )}
-          </div>
+      {/* ---- Analysis: only this region scrolls when space is tight ---- */}
+      <div className="mt-4 flex min-h-0 flex-1 flex-col overflow-hidden">
+        <div className="flex shrink-0 items-center gap-3 pb-3">
+          <h2 className="text-sm font-semibold text-muted-foreground">
+            {t("connectivity.analysis.title")}
+          </h2>
+          <Button
+            size="sm"
+            variant="ghost"
+            className="h-8 px-2"
+            aria-label={t("connectivity.actions.testSettings")}
+            onClick={() => setShowSettings(true)}
+          >
+            <SlidersHorizontal className="h-4 w-4" />
+            {t("common.settings")}
+          </Button>
+          {running && progress && (
+            <span className="text-xs text-muted-foreground">
+              {phaseLabel(progress.phase)}
+            </span>
+          )}
         </div>
 
-        {!selectedHost ? (
-          <Card>
-            <CardContent className="space-y-3 py-10 text-center text-sm text-muted-foreground">
-              <p>{t("connectivity.empty.noHost")}</p>
-              <Button asChild size="sm" variant="secondary">
-                <Link to="/hosts">{t("connectivity.actions.manageHosts")}</Link>
-              </Button>
-            </CardContent>
-          </Card>
-        ) : failed ? (
-          <Card>
-            <CardContent className="py-6">
-              <p className="text-sm text-destructive">
-                {resultForHost?.error ?? t("connectivity.failed")}
-              </p>
-            </CardContent>
-          </Card>
-        ) : running || resultForHost ? (
-          <>
-            <ConnectivityMetricsGrid
-              values={values}
-              activePhase={running ? progress?.phase : null}
-              phaseProgress={progress?.progress}
-            />
-            {!running && resultForHost?.raw && (
-              <Card>
-                <CardContent className="py-4">
-                  <p className="mb-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                    {t("connectivity.notes.title")}
-                  </p>
-                  <pre className="whitespace-pre-wrap text-xs text-muted-foreground">
-                    {resultForHost.raw}
-                  </pre>
-                </CardContent>
-              </Card>
-            )}
-          </>
-        ) : (
-          <Card>
-            <CardContent className="py-10 text-center text-sm text-muted-foreground">
-              {t("connectivity.ready", { alias: selectedHost.alias })}
-            </CardContent>
-          </Card>
-        )}
+        <div className="min-h-0 flex-1 space-y-4 overflow-y-auto pr-1">
+          {!selectedHost ? (
+            <Card>
+              <CardContent className="space-y-3 py-10 text-center text-sm text-muted-foreground">
+                <p>{t("connectivity.empty.noHost")}</p>
+                <Button asChild size="sm" variant="secondary">
+                  <Link to="/hosts">{t("connectivity.actions.manageHosts")}</Link>
+                </Button>
+              </CardContent>
+            </Card>
+          ) : failed ? (
+            <Card>
+              <CardContent className="py-6">
+                <p className="text-sm text-destructive">
+                  {resultForHost?.error ?? t("connectivity.failed")}
+                </p>
+              </CardContent>
+            </Card>
+          ) : running || resultForHost ? (
+            <>
+              <ConnectivityMetricsGrid
+                values={values}
+                activePhase={running ? progress?.phase : null}
+                phaseProgress={progress?.progress}
+              />
+              {!running && resultForHost?.raw && (
+                <Card>
+                  <CardContent className="py-4">
+                    <p className="mb-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                      {t("connectivity.notes.title")}
+                    </p>
+                    <pre className="whitespace-pre-wrap text-xs text-muted-foreground">
+                      {resultForHost.raw}
+                    </pre>
+                  </CardContent>
+                </Card>
+              )}
+            </>
+          ) : (
+            <Card>
+              <CardContent className="py-10 text-center text-sm text-muted-foreground">
+                {t("connectivity.ready", { alias: selectedHost.alias })}
+              </CardContent>
+            </Card>
+          )}
+        </div>
       </div>
 
       <SettingsDialog

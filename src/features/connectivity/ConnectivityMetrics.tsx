@@ -13,6 +13,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
+import { InfoHint } from "@/components/ui/info-hint";
 import { useI18n } from "@/hooks/useI18n";
 import { cn } from "@/lib/utils";
 import type {
@@ -48,6 +49,8 @@ interface MetricProps {
   accent: string;
   active?: boolean;
   phaseProgress?: number;
+  infoBody: string;
+  infoAria: string;
 }
 
 const Metric = memo(function Metric({
@@ -59,10 +62,20 @@ const Metric = memo(function Metric({
   accent,
   active,
   phaseProgress,
+  infoBody,
+  infoAria,
 }: MetricProps) {
   return (
     <Card className={cn("[contain:content]", active && "border-primary/60")}>
       <CardContent className="relative flex flex-col items-center gap-1 overflow-hidden py-5 text-center">
+        <div className="absolute right-2 top-2 z-10">
+          <InfoHint
+            align="end"
+            ariaLabel={infoAria}
+            title={label}
+            body={infoBody}
+          />
+        </div>
         <div
           className={cn(
             "flex items-center gap-2 text-xs font-medium uppercase tracking-wide",
@@ -169,6 +182,10 @@ export const ConnectivityMetricsGrid = memo(function ConnectivityMetricsGrid({
         accent="text-muted-foreground"
         active={on("handshake")}
         phaseProgress={phaseProgress}
+        infoAria={t("connectivity.metrics.info.aria", {
+          metric: t("connectivity.metrics.handshake"),
+        })}
+        infoBody={t("connectivity.metrics.info.handshake")}
       />
       <Metric
         icon={Timer}
@@ -186,6 +203,10 @@ export const ConnectivityMetricsGrid = memo(function ConnectivityMetricsGrid({
         accent="text-muted-foreground"
         active={on("ping")}
         phaseProgress={phaseProgress}
+        infoAria={t("connectivity.metrics.info.aria", {
+          metric: t("connectivity.metrics.rttAvg"),
+        })}
+        infoBody={t("connectivity.metrics.info.rttAvg")}
       />
       <Metric
         icon={Waves}
@@ -195,6 +216,10 @@ export const ConnectivityMetricsGrid = memo(function ConnectivityMetricsGrid({
         accent="text-muted-foreground"
         active={on("ping")}
         phaseProgress={phaseProgress}
+        infoAria={t("connectivity.metrics.info.aria", {
+          metric: t("connectivity.metrics.jitter"),
+        })}
+        infoBody={t("connectivity.metrics.info.jitter")}
       />
       <Metric
         icon={AlertTriangle}
@@ -204,6 +229,10 @@ export const ConnectivityMetricsGrid = memo(function ConnectivityMetricsGrid({
         accent="text-muted-foreground"
         active={on("ping")}
         phaseProgress={phaseProgress}
+        infoAria={t("connectivity.metrics.info.aria", {
+          metric: t("connectivity.metrics.packetLoss"),
+        })}
+        infoBody={t("connectivity.metrics.info.packetLoss")}
       />
       <Metric
         icon={Ruler}
@@ -218,6 +247,10 @@ export const ConnectivityMetricsGrid = memo(function ConnectivityMetricsGrid({
         accent="text-muted-foreground"
         active={on("mtu")}
         phaseProgress={phaseProgress}
+        infoAria={t("connectivity.metrics.info.aria", {
+          metric: t("connectivity.metrics.pathMtu"),
+        })}
+        infoBody={t("connectivity.metrics.info.pathMtu")}
       />
       <Metric
         icon={Route}
@@ -227,6 +260,10 @@ export const ConnectivityMetricsGrid = memo(function ConnectivityMetricsGrid({
         accent="text-muted-foreground"
         active={on("traceroute")}
         phaseProgress={phaseProgress}
+        infoAria={t("connectivity.metrics.info.aria", {
+          metric: t("connectivity.metrics.hops"),
+        })}
+        infoBody={t("connectivity.metrics.info.hops")}
       />
       <Metric
         icon={Upload}
@@ -236,6 +273,10 @@ export const ConnectivityMetricsGrid = memo(function ConnectivityMetricsGrid({
         accent="text-success"
         active={on("uplink")}
         phaseProgress={phaseProgress}
+        infoAria={t("connectivity.metrics.info.aria", {
+          metric: t("connectivity.metrics.uplink"),
+        })}
+        infoBody={t("connectivity.metrics.info.uplink")}
       />
       <Metric
         icon={Download}
@@ -245,6 +286,10 @@ export const ConnectivityMetricsGrid = memo(function ConnectivityMetricsGrid({
         accent="text-primary"
         active={on("downlink")}
         phaseProgress={phaseProgress}
+        infoAria={t("connectivity.metrics.info.aria", {
+          metric: t("connectivity.metrics.downlink"),
+        })}
+        infoBody={t("connectivity.metrics.info.downlink")}
       />
       {/* Derived / computed */}
       <Metric
@@ -256,6 +301,10 @@ export const ConnectivityMetricsGrid = memo(function ConnectivityMetricsGrid({
         accent="text-muted-foreground"
         active={on("done")}
         phaseProgress={phaseProgress}
+        infoAria={t("connectivity.metrics.info.aria", {
+          metric: t("connectivity.metrics.delay"),
+        })}
+        infoBody={t("connectivity.metrics.info.delay")}
       />
       <Metric
         icon={Package}
@@ -266,6 +315,10 @@ export const ConnectivityMetricsGrid = memo(function ConnectivityMetricsGrid({
         accent="text-muted-foreground"
         active={on("done")}
         phaseProgress={phaseProgress}
+        infoAria={t("connectivity.metrics.info.aria", {
+          metric: t("connectivity.metrics.bdp"),
+        })}
+        infoBody={t("connectivity.metrics.info.bdp")}
       />
     </div>
   );
