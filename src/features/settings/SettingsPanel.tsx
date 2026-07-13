@@ -318,7 +318,6 @@ export function SettingsTabContent({
         description={t("settings.internet.description")}
       >
         <TracerouteSettingsForm
-          variant={variant}
           resetToken={resetToken}
           onSaveActionsChange={onSaveActionsChange}
         />

@@ -47,11 +47,9 @@ function hostValidationError(
 
 /** Internet-test traceroute target and hop limit. */
 export function TracerouteSettingsForm({
-  variant = "page",
   resetToken,
   onSaveActionsChange,
 }: {
-  variant?: "page" | "dialog";
   resetToken?: number;
   onSaveActionsChange?: (actions: SettingsSaveActions | null) => void;
 }) {
