@@ -138,20 +138,11 @@
 
 ## 4. 貢獻
 
-<p align="center">
-  <a href="https://github.com/pomelo925/LinkSight/graphs/contributors">
-    <img src="https://contrib.rocks/image?repo=pomelo925/LinkSight" alt="LinkSight contributors" />
-  </a>
-</p>
+<a href="https://github.com/pomelo925/LinkSight/graphs/contributors">
+  <img src="https://contrib.rocks/image?repo=pomelo925/LinkSight" alt="LinkSight contributors" />
+</a>
 
 歡迎貢獻！細節請見 [CONTRIBUTING.md](CONTRIBUTING.md)。
-
-如何 contribute：
-
-1. Fork 本 repo
-2. 從 `main` 開新 branch 並修改
-3. Push 到你的 fork
-4. 對 `pomelo925/LinkSight` 發起 Pull Request
 
 
 <br /><br />

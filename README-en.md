@@ -138,20 +138,11 @@ Requires Docker, Docker Compose, and a working X server.
 
 ## 4. Contribution
 
-<p align="center">
-  <a href="https://github.com/pomelo925/LinkSight/graphs/contributors">
-    <img src="https://contrib.rocks/image?repo=pomelo925/LinkSight" alt="LinkSight contributors" />
-  </a>
-</p>
+<a href="https://github.com/pomelo925/LinkSight/graphs/contributors">
+  <img src="https://contrib.rocks/image?repo=pomelo925/LinkSight" alt="LinkSight contributors" />
+</a>
 
 Contributions are welcome! See [CONTRIBUTING.md](CONTRIBUTING.md) for details.
-
-How to contribute:
-
-1. Fork this repo
-2. Create a branch from `main` and make your changes
-3. Push to your fork
-4. Open a Pull Request against `pomelo925/LinkSight`
 
 
 <br /><br />
