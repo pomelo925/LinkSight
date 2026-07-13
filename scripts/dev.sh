@@ -33,6 +33,18 @@ if ! command -v cargo >/dev/null 2>&1; then
   exit 1
 fi
 
+# Docker/X11 sessions often have no D-Bus; WebKit then spam-warns:
+#   Can't connect to a11y bus: Could not connect: No such file or directory
+# Wrap once in a private session bus and warm AT-SPI so WebKit can attach.
+if command -v dbus-run-session >/dev/null 2>&1 && [ "${LINKSIGHT_DBUS_WRAPPED:-}" != 1 ]; then
+  export LINKSIGHT_DBUS_WRAPPED=1
+  exec dbus-run-session -- "$0" "$@"
+fi
+if command -v dbus-send >/dev/null 2>&1; then
+  dbus-send --session --dest=org.a11y.Bus --type=method_call \
+    /org/a11y/bus org.a11y.Bus.GetAddress >/dev/null 2>&1 || true
+fi
+
 log "Launching Tauri dev (frontend + backend, hot reload)..."
 log "The LinkSight desktop window will open automatically."
 

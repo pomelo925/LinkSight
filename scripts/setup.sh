@@ -19,7 +19,9 @@ command -v cargo >/dev/null 2>&1 || warn "cargo not found on PATH (use the dev c
 
 if command -v npm >/dev/null 2>&1; then
   log "Installing frontend dependencies (npm install)..."
-  npm install
+  # --no-audit/--no-fund: quiet known Vite 5 / esbuild advisories (fix needs a
+  # major Vite bump) and funding noise on every ./run.sh dev.
+  npm install --no-audit --no-fund
 else
   warn "npm unavailable; skipping frontend install."
 fi

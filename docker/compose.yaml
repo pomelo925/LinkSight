@@ -32,7 +32,8 @@ x-common-settings: &common
     - RUST_LOG=info
     # Use the host user's home inside the container (matches the volume mount).
     - HOME=${HOME}
-    # Suppress harmless GTK / GL / a11y noise when rendering via host X11
+    # Suppress GTK atk-bridge noise; WebKit a11y is handled via dbus-run-session
+    # in scripts/dev.sh (NO_AT_BRIDGE alone does not silence WebKitWebProcess).
     - NO_AT_BRIDGE=1
     - GTK_MODULES=
     - LIBGL_ALWAYS_SOFTWARE=1
