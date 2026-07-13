@@ -9,7 +9,6 @@ import {
   ArrowLeft,
   RefreshCw,
   HardDrive,
-  ChevronRight,
   ChevronDown,
   ChevronUp,
   ChevronsUpDown,
@@ -121,48 +120,41 @@ function EntryIcon({ kind }: { kind: FileEntryKind }) {
   return <FileIcon className="h-4 w-4 shrink-0 text-muted-foreground" />;
 }
 
-function Breadcrumb({
+/** Editable path field — Enter navigates; blur restores the live listing path. */
+export function PathInput({
   path,
   onNavigate,
+  disabled,
+  placeholder,
 }: {
   path: string;
   onNavigate: (path: string) => void;
+  disabled?: boolean;
+  placeholder?: string;
 }) {
-  const segments = path.split("/").filter(Boolean);
-  const crumb = (label: React.ReactNode, target: string, key: string) => (
-    <button
-      key={key}
-      type="button"
-      onClick={() => onNavigate(target)}
-      className="max-w-[8rem] truncate rounded px-1 py-0.5 text-xs text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-    >
-      {label}
-    </button>
-  );
+  const [value, setValue] = useState(path);
 
-  let acc = "";
+  useEffect(() => {
+    setValue(path);
+  }, [path]);
+
   return (
-    <div className="flex min-w-0 flex-1 items-center gap-0.5 overflow-x-auto">
-      {segments.length === 0 ? (
-        <span className="px-1 py-0.5 text-xs font-medium">/</span>
-      ) : null}
-      {segments.map((seg, i) => {
-        acc += `/${seg}`;
-        const isLast = i === segments.length - 1;
-        return (
-          <div key={acc} className="flex min-w-0 items-center gap-0.5">
-            <ChevronRight className="h-3 w-3 shrink-0 text-muted-foreground/40" />
-            {isLast ? (
-              <span className="max-w-[8rem] truncate px-1 py-0.5 text-xs font-medium">
-                {seg}
-              </span>
-            ) : (
-              crumb(seg, acc, acc)
-            )}
-          </div>
-        );
-      })}
-    </div>
+    <Input
+      value={value}
+      disabled={disabled}
+      placeholder={placeholder}
+      spellCheck={false}
+      aria-label="Path"
+      onChange={(e) => setValue(e.target.value)}
+      onKeyDown={(e) => {
+        if (e.key !== "Enter") return;
+        e.preventDefault();
+        const next = value.trim();
+        if (next) onNavigate(next);
+      }}
+      onBlur={() => setValue(path)}
+      className="h-7 min-w-0 flex-1 font-mono text-xs"
+    />
   );
 }
 
@@ -473,9 +465,14 @@ export function SftpPane({
         </Button>
         <div className="mx-0.5 h-4 w-px bg-border" />
         {listing ? (
-          <Breadcrumb path={listing.path} onNavigate={onNavigate} />
+          <PathInput path={listing.path} onNavigate={onNavigate} disabled={loading} />
         ) : (
-          <span className="text-xs text-muted-foreground">{empty}</span>
+          <PathInput
+            path=""
+            onNavigate={onNavigate}
+            disabled={loading}
+            placeholder={empty}
+          />
         )}
       </div>
 
