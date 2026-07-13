@@ -20,6 +20,8 @@ import { SettingsDialog } from "@/features/settings/SettingsDialogs";
 
 type SpeedtestLocationState = {
   autoRun?: boolean;
+  /** Optional page-enter fade duration (ms), set by Home Internet Test transition. */
+  enterFadeMs?: number;
 };
 
 function formatMbps(value: number | null | undefined, emptyValue: string): string {
