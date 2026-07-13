@@ -19,11 +19,23 @@ fn default_start_path() -> PathBuf {
         .unwrap_or_else(|_| PathBuf::from("/"))
 }
 
+/// Expand `~` / `~/…` to `$HOME`. Absolute and relative paths otherwise unchanged.
+fn expand_user_path(path: &str) -> PathBuf {
+    let path = path.trim();
+    if path == "~" {
+        return default_start_path();
+    }
+    if let Some(rest) = path.strip_prefix("~/") {
+        return default_start_path().join(rest);
+    }
+    PathBuf::from(path)
+}
+
 fn resolve_path(path: Option<&str>) -> Result<PathBuf> {
     let requested = path
         .map(str::trim)
         .filter(|p| !p.is_empty())
-        .map(PathBuf::from)
+        .map(expand_user_path)
         .unwrap_or_else(default_start_path);
 
     if requested.is_absolute() {
@@ -97,12 +109,20 @@ pub fn list_dir(path: Option<&str>, show_hidden: bool) -> Result<FileListing> {
 
     let mut entries = Vec::new();
     for item in fs::read_dir(&canonical).map_err(map_io)? {
-        let item = item.map_err(map_io)?;
+        let item = match item {
+            Ok(v) => v,
+            Err(_) => continue, // skip unreadable dirents
+        };
         let name = item.file_name().to_string_lossy().into_owned();
         if !show_hidden && is_hidden(&name) {
             continue;
         }
-        entries.push(entry_from_path(&item.path(), &name)?);
+        // Skip entries we cannot stat (e.g. mode 700 dirs belonging to other users)
+        // instead of failing the whole listing.
+        match entry_from_path(&item.path(), &name) {
+            Ok(entry) => entries.push(entry),
+            Err(_) => continue,
+        }
     }
 
     sort_entries(&mut entries);
