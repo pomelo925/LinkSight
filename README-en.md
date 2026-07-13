@@ -11,18 +11,15 @@ A lightweight desktop app for quick **single-host internet** and **two-host peer
 [![Latest release](https://img.shields.io/github/v/release/pomelo925/LinkSight?label=download)](https://github.com/pomelo925/LinkSight/releases/latest)
 [![MIT License](https://img.shields.io/github/license/pomelo925/LinkSight.svg?style=flat)](LICENSE)
 
-<br />
-
-<!-- Homepage animation GIFs — drop files into assets/ when ready -->
 <table>
   <tr>
     <td align="center" width="50%">
-      <!-- <img src="assets/homepage-internet.gif" alt="Internet Connectivity animation" width="100%" /> -->
-      <p><em>Homepage · Internet Connectivity<br />(GIF placeholder)</em></p>
+      <strong>Internet Connectivity</strong><br />
+      <img src="assets/internet-test.gif" alt="Internet Connectivity animation" width="100%" />
     </td>
     <td align="center" width="50%">
-      <!-- <img src="assets/homepage-p2p.gif" alt="Peer-to-Peer animation" width="100%" /> -->
-      <p><em>Homepage · Peer-to-Peer<br />(GIF placeholder)</em></p>
+      <strong>Peer-to-Peer</strong><br />
+      <img src="assets/p2p-test.gif" alt="Peer-to-Peer animation" width="100%" />
     </td>
   </tr>
 </table>
