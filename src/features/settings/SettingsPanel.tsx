@@ -8,6 +8,7 @@ import { THEMES, type ThemeId } from "@/lib/theme";
 import { useI18n } from "@/hooks/useI18n";
 import { useFontSizeStore } from "@/store/useFontSizeStore";
 import { useThemeStore } from "@/store/useThemeStore";
+import { useSettingsPreviewStore } from "@/store/useSettingsPreviewStore";
 import { TracerouteSettingsForm } from "@/features/settings/TracerouteSettingsForm";
 import { ConnectivitySettingsForm } from "@/features/settings/ConnectivitySettingsForm";
 
@@ -191,63 +192,73 @@ function ThemeSelector({
 }
 
 function GeneralSettings({
-  variant,
   resetToken,
   onSaveActionsChange,
 }: {
-  variant: SettingsPanelVariant;
   resetToken?: number;
   onSaveActionsChange?: (actions: SettingsSaveActions | null) => void;
 }) {
-  const { locale, setLocale, t } = useI18n();
+  const { committedLocale, setLocale, t } = useI18n();
   const fontSize = useFontSizeStore((s) => s.fontSize);
   const setFontSize = useFontSizeStore((s) => s.setFontSize);
   const theme = useThemeStore((s) => s.theme);
   const setTheme = useThemeStore((s) => s.setTheme);
+  const setPreview = useSettingsPreviewStore((s) => s.setPreview);
+  const clearPreview = useSettingsPreviewStore((s) => s.clearPreview);
 
-  const [draftLocale, setDraftLocale] = useState(locale);
+  const [draftLocale, setDraftLocale] = useState(committedLocale);
   const [draftFontSize, setDraftFontSize] = useState(fontSize);
   const [draftTheme, setDraftTheme] = useState(theme);
 
+  // Rehydrate drafts from committed stores (dialog reopen / external change).
   useEffect(() => {
-    setDraftLocale(locale);
+    setDraftLocale(committedLocale);
     setDraftFontSize(fontSize);
     setDraftTheme(theme);
-  }, [locale, fontSize, theme, resetToken]);
-
-  const isDialog = variant === "dialog";
-  const activeLocale = isDialog ? draftLocale : locale;
-  const activeFontSize = isDialog ? draftFontSize : fontSize;
-  const activeTheme = isDialog ? draftTheme : theme;
-
-  const handleLocale = (v: Locale) => {
-    if (isDialog) setDraftLocale(v);
-    else setLocale(v);
-  };
-  const handleFontSize = (v: FontSize) => {
-    if (isDialog) setDraftFontSize(v);
-    else setFontSize(v);
-  };
-  const handleTheme = (v: ThemeId) => {
-    if (isDialog) setDraftTheme(v);
-    else setTheme(v);
-  };
+    clearPreview();
+  }, [committedLocale, fontSize, theme, resetToken, clearPreview]);
 
   const dirty =
-    draftLocale !== locale || draftFontSize !== fontSize || draftTheme !== theme;
-  const canSave = !isDialog || dirty;
+    draftLocale !== committedLocale ||
+    draftFontSize !== fontSize ||
+    draftTheme !== theme;
+
+  // Live preview without touching persisted stores.
+  useEffect(() => {
+    if (!dirty) {
+      clearPreview();
+      return;
+    }
+    setPreview({
+      locale: draftLocale,
+      fontSize: draftFontSize,
+      theme: draftTheme,
+    });
+  }, [dirty, draftLocale, draftFontSize, draftTheme, setPreview, clearPreview]);
+
+  // Leaving settings without Save reverts the live preview.
+  useEffect(() => () => clearPreview(), [clearPreview]);
 
   const handleSave = useCallback(() => {
     setLocale(draftLocale);
     setFontSize(draftFontSize);
     setTheme(draftTheme);
-  }, [draftLocale, draftFontSize, draftTheme, setLocale, setFontSize, setTheme]);
+    clearPreview();
+  }, [
+    draftLocale,
+    draftFontSize,
+    draftTheme,
+    setLocale,
+    setFontSize,
+    setTheme,
+    clearPreview,
+  ]);
 
   useEffect(() => {
-    if (!isDialog || !onSaveActionsChange) return;
-    onSaveActionsChange({ canSave, onSave: handleSave });
+    if (!onSaveActionsChange) return;
+    onSaveActionsChange({ canSave: dirty, onSave: handleSave });
     return () => onSaveActionsChange(null);
-  }, [isDialog, canSave, handleSave, onSaveActionsChange]);
+  }, [dirty, handleSave, onSaveActionsChange]);
 
   return (
     <div className="space-y-6">
@@ -255,7 +266,7 @@ function GeneralSettings({
         title={t("settings.language.title")}
         description={t("settings.language.description")}
       >
-        <LanguageSelector value={activeLocale} onChange={handleLocale} />
+        <LanguageSelector value={draftLocale} onChange={setDraftLocale} />
       </SettingsSection>
 
       <SettingsSection
@@ -263,7 +274,7 @@ function GeneralSettings({
         description={t("settings.fontSize.description")}
         bordered
       >
-        <FontSizeSelector value={activeFontSize} onChange={handleFontSize} />
+        <FontSizeSelector value={draftFontSize} onChange={setDraftFontSize} />
       </SettingsSection>
 
       <SettingsSection
@@ -271,7 +282,7 @@ function GeneralSettings({
         description={t("settings.theme.description")}
         bordered
       >
-        <ThemeSelector value={activeTheme} onChange={handleTheme} />
+        <ThemeSelector value={draftTheme} onChange={setDraftTheme} />
       </SettingsSection>
     </div>
   );
@@ -289,14 +300,14 @@ export function SettingsTabContent({
   onSaveActionsChange?: (actions: SettingsSaveActions | null) => void;
 }) {
   const { t } = useI18n();
-  const reportSave = variant === "dialog" ? onSaveActionsChange : undefined;
+  // P2P keeps its own inline Save on the page; dialog mode uses the panel footer.
+  const reportP2pSave = variant === "dialog" ? onSaveActionsChange : undefined;
 
   if (tab === "general") {
     return (
       <GeneralSettings
-        variant={variant}
         resetToken={resetToken}
-        onSaveActionsChange={reportSave}
+        onSaveActionsChange={onSaveActionsChange}
       />
     );
   }
@@ -309,7 +320,7 @@ export function SettingsTabContent({
         <TracerouteSettingsForm
           variant={variant}
           resetToken={resetToken}
-          onSaveActionsChange={reportSave}
+          onSaveActionsChange={onSaveActionsChange}
         />
       </SettingsSection>
     );
@@ -322,7 +333,7 @@ export function SettingsTabContent({
       <ConnectivitySettingsForm
         variant={variant === "dialog" ? "dialog" : "inline"}
         resetToken={resetToken}
-        onSaveActionsChange={reportSave}
+        onSaveActionsChange={reportP2pSave}
       />
     </SettingsSection>
   );
@@ -333,13 +344,13 @@ export function SettingsFooter({ embedded }: { embedded?: boolean }) {
   return (
     <div
       className={cn(
-        "flex items-end justify-between gap-4",
+        "flex shrink-0 items-end justify-between gap-4",
         !embedded && "border-t border-border/40 pt-4",
       )}
     >
       <div className="space-y-0.5 text-sm text-muted-foreground">
         <p className="font-medium text-foreground">{t("settings.about.title")}</p>
-        <p>{t("settings.about.version")}</p>
+        <p>{t("settings.about.version", { version: __APP_VERSION__ })}</p>
         <p>{t("settings.about.stack")}</p>
       </div>
       <p className="shrink-0 text-xs text-muted-foreground">{t("settings.about.copyright")}</p>
@@ -363,11 +374,6 @@ export function SettingsPanel({
 }) {
   const { t } = useI18n();
   const [saveActions, setSaveActions] = useState<SettingsSaveActions | null>(null);
-  const isDialog = variant === "dialog";
-
-  useEffect(() => {
-    setSaveActions(null);
-  }, [tab, resetToken]);
 
   return (
     <div
@@ -382,15 +388,15 @@ export function SettingsPanel({
           tab={tab}
           variant={variant}
           resetToken={resetToken}
-          onSaveActionsChange={isDialog ? setSaveActions : undefined}
+          onSaveActionsChange={setSaveActions}
         />
       </div>
-      {isDialog && (
-        <div className="flex shrink-0 justify-end border-t border-border bg-card px-5 py-3">
+      {saveActions && (
+        <div className="flex shrink-0 justify-start border-t border-border bg-card px-5 py-3">
           <Button
             size="sm"
-            disabled={!saveActions?.canSave}
-            onClick={() => saveActions?.onSave()}
+            disabled={!saveActions.canSave}
+            onClick={() => saveActions.onSave()}
           >
             <Save className="h-4 w-4" />
             {t("settings.save")}

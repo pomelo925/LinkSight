@@ -12,16 +12,18 @@ export function Settings() {
   const [tab, setTab] = useState<SettingsTab>("general");
 
   return (
-    <div className="flex h-full min-h-0 flex-col overflow-hidden gap-4">
+    <div className="flex h-full min-h-0 flex-col overflow-hidden">
       <PageHeader title={t("settings.title")} description={t("settings.description")} />
 
       <SettingsPanel
         tab={tab}
         onTabChange={setTab}
-        className="min-h-0 flex-1"
+        className="mt-4 min-h-0 flex-1"
       />
 
-      <SettingsFooter />
+      <div className="mt-8 shrink-0">
+        <SettingsFooter />
+      </div>
     </div>
   );
 }

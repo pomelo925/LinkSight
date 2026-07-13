@@ -22,6 +22,22 @@ function parseInRange(s: string, min: number, max: number): number | null {
   return n >= min && n <= max ? n : null;
 }
 
+function numberValidationError(
+  value: string,
+  min: number,
+  max: number,
+  enabled: boolean,
+  t: (key: string) => string,
+): string | null {
+  if (!enabled) return null;
+  const s = value.trim();
+  if (s === "") return t("settings.validation.required");
+  if (!/^\d+$/.test(s)) return t("settings.validation.invalidNumber");
+  const n = parseInt(s, 10);
+  if (n < min || n > max) return t("settings.validation.invalidNumberRange");
+  return null;
+}
+
 function SegmentedControl<T extends string>({
   value,
   options,
@@ -69,7 +85,7 @@ function NumberField({
   value,
   onChange,
   disabled,
-  invalid,
+  error,
   hint,
 }: {
   label: string;
@@ -77,17 +93,29 @@ function NumberField({
   value: string;
   onChange: (v: string) => void;
   disabled?: boolean;
-  invalid?: boolean;
+  error?: string | null;
   hint?: string;
 }) {
+  const invalid = Boolean(error);
   return (
     <div className="space-y-1.5">
-      <div className="flex items-baseline justify-between gap-2">
-        <label className="text-xs font-medium text-muted-foreground">{label}</label>
+      <div className="flex items-baseline gap-2">
+        <label className="shrink-0 text-xs font-medium text-muted-foreground">
+          {label}
+        </label>
+        {error && (
+          <p
+            className="min-w-0 flex-1 truncate text-left text-[11px] font-medium text-destructive"
+            role="alert"
+            title={error}
+          >
+            {error}
+          </p>
+        )}
         <span
           className={cn(
-            "text-[11px] tabular-nums",
-            invalid ? "text-destructive" : "text-muted-foreground/60",
+            "ml-auto shrink-0 text-[11px] tabular-nums",
+            invalid ? "text-destructive/70" : "text-muted-foreground/60",
           )}
         >
           {range}
@@ -173,18 +201,18 @@ export function ConnectivitySettingsForm({
 }) {
   const { t } = useI18n();
   const commit = useConnectivitySettingsStore((s) => s.set);
-  const init = currentConnectivitySettings();
+  const saved = currentConnectivitySettings();
 
-  const [pingCount, setPingCount] = useState(String(init.pingCount));
-  const [hops, setHops] = useState(String(init.tracerouteMaxHops));
-  const [streams, setStreams] = useState(String(init.iperfStreams));
-  const [direction, setDirection] = useState<ConnectivityDirection>(init.direction);
-  const [protocol, setProtocol] = useState<ConnectivityProtocol>(init.protocol);
-  const [enableHandshake, setEnableHandshake] = useState(init.enableHandshake);
-  const [enablePing, setEnablePing] = useState(init.enablePing);
-  const [enableMtu, setEnableMtu] = useState(init.enableMtu);
-  const [enableTraceroute, setEnableTraceroute] = useState(init.enableTraceroute);
-  const [enableThroughput, setEnableThroughput] = useState(init.enableThroughput);
+  const [pingCount, setPingCount] = useState(String(saved.pingCount));
+  const [hops, setHops] = useState(String(saved.tracerouteMaxHops));
+  const [streams, setStreams] = useState(String(saved.iperfStreams));
+  const [direction, setDirection] = useState<ConnectivityDirection>(saved.direction);
+  const [protocol, setProtocol] = useState<ConnectivityProtocol>(saved.protocol);
+  const [enableHandshake, setEnableHandshake] = useState(saved.enableHandshake);
+  const [enablePing, setEnablePing] = useState(saved.enablePing);
+  const [enableMtu, setEnableMtu] = useState(saved.enableMtu);
+  const [enableTraceroute, setEnableTraceroute] = useState(saved.enableTraceroute);
+  const [enableThroughput, setEnableThroughput] = useState(saved.enableThroughput);
 
   useEffect(() => {
     const d = currentConnectivitySettings();
@@ -200,14 +228,37 @@ export function ConnectivitySettingsForm({
     setEnableThroughput(d.enableThroughput);
   }, [resetToken]);
 
+  // Re-read committed values so dirty clears after save.
+  const committedPingCount = useConnectivitySettingsStore((s) => s.pingCount);
+  const committedHops = useConnectivitySettingsStore((s) => s.tracerouteMaxHops);
+  const committedStreams = useConnectivitySettingsStore((s) => s.iperfStreams);
+  const committedDirection = useConnectivitySettingsStore((s) => s.direction);
+  const committedProtocol = useConnectivitySettingsStore((s) => s.protocol);
+  const committedHandshake = useConnectivitySettingsStore((s) => s.enableHandshake);
+  const committedPing = useConnectivitySettingsStore((s) => s.enablePing);
+  const committedMtu = useConnectivitySettingsStore((s) => s.enableMtu);
+  const committedTraceroute = useConnectivitySettingsStore((s) => s.enableTraceroute);
+  const committedThroughput = useConnectivitySettingsStore((s) => s.enableThroughput);
+
   const pingParsed = parseInRange(pingCount, 1, 50);
   const hopsParsed = parseInRange(hops, 1, 64);
   const streamsParsed = parseInRange(streams, 1, 128);
 
-  const pingInvalid = enablePing && pingParsed == null;
-  const hopsInvalid = enableTraceroute && hopsParsed == null;
-  const streamsInvalid = enableThroughput && streamsParsed == null;
-  const canSave = !pingInvalid && !hopsInvalid && !streamsInvalid;
+  const pingError = numberValidationError(pingCount, 1, 50, enablePing, t);
+  const hopsError = numberValidationError(hops, 1, 64, enableTraceroute, t);
+  const streamsError = numberValidationError(streams, 1, 128, enableThroughput, t);
+  const dirty =
+    pingCount !== String(committedPingCount) ||
+    hops !== String(committedHops) ||
+    streams !== String(committedStreams) ||
+    direction !== committedDirection ||
+    protocol !== committedProtocol ||
+    enableHandshake !== committedHandshake ||
+    enablePing !== committedPing ||
+    enableMtu !== committedMtu ||
+    enableTraceroute !== committedTraceroute ||
+    enableThroughput !== committedThroughput;
+  const canSave = dirty && !pingError && !hopsError && !streamsError;
   const throughputOff = !enableThroughput;
 
   const handleReset = () => {
@@ -226,9 +277,9 @@ export function ConnectivitySettingsForm({
 
   const handleSave = useCallback(() => {
     if (!canSave) return;
-    commit("pingCount", pingParsed ?? init.pingCount);
-    commit("tracerouteMaxHops", hopsParsed ?? init.tracerouteMaxHops);
-    commit("iperfStreams", streamsParsed ?? init.iperfStreams);
+    commit("pingCount", pingParsed ?? committedPingCount);
+    commit("tracerouteMaxHops", hopsParsed ?? committedHops);
+    commit("iperfStreams", streamsParsed ?? committedStreams);
     commit("direction", direction);
     commit("protocol", protocol);
     commit("enableHandshake", enableHandshake);
@@ -243,7 +294,9 @@ export function ConnectivitySettingsForm({
     pingParsed,
     hopsParsed,
     streamsParsed,
-    init,
+    committedPingCount,
+    committedHops,
+    committedStreams,
     direction,
     protocol,
     enableHandshake,
@@ -281,7 +334,7 @@ export function ConnectivitySettingsForm({
           range={t("connectivity.settings.range.ping")}
           value={pingCount}
           disabled={!enablePing}
-          invalid={pingInvalid}
+          error={pingError}
           onChange={setPingCount}
           hint={t("connectivity.settings.hint.pingPackets")}
         />
@@ -290,7 +343,7 @@ export function ConnectivitySettingsForm({
           range={t("connectivity.settings.range.hops")}
           value={hops}
           disabled={!enableTraceroute}
-          invalid={hopsInvalid}
+          error={hopsError}
           onChange={setHops}
         />
         <NumberField
@@ -298,7 +351,7 @@ export function ConnectivitySettingsForm({
           range={t("connectivity.settings.range.streams")}
           value={streams}
           disabled={throughputOff}
-          invalid={streamsInvalid}
+          error={streamsError}
           onChange={setStreams}
           hint={t("connectivity.settings.hint.streams")}
         />
@@ -330,29 +383,25 @@ export function ConnectivitySettingsForm({
       {(showInlineFooter || showStandaloneDialogFooter) && (
         <div
           className={cn(
-            "flex items-center justify-between",
-            (showInlineFooter || showStandaloneDialogFooter) && "border-t border-border pt-4",
+            "flex items-center justify-between gap-3",
+            "border-t border-border pt-4",
           )}
         >
-          {showInlineFooter ? (
-            <Button variant="ghost" size="sm" onClick={handleReset}>
-              <RotateCcw className="h-4 w-4" />
-              {t("connectivity.settings.resetDefaults")}
-            </Button>
-          ) : (
-            <div />
-          )}
           <div className="flex items-center gap-2">
+            <Button size="sm" disabled={!canSave} onClick={handleSave}>
+              <Save className="h-4 w-4" />
+              {t("settings.save")}
+            </Button>
             {showStandaloneDialogFooter && onClose && (
               <Button variant="secondary" size="sm" onClick={onClose}>
                 {t("common.cancel")}
               </Button>
             )}
-            <Button size="sm" disabled={!canSave} onClick={handleSave}>
-              <Save className="h-4 w-4" />
-              {t("settings.save")}
-            </Button>
           </div>
+          <Button variant="ghost" size="sm" onClick={handleReset}>
+            <RotateCcw className="h-4 w-4" />
+            {t("connectivity.settings.resetDefaults")}
+          </Button>
         </div>
       )}
     </div>

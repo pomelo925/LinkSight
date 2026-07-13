@@ -3,7 +3,10 @@ import { CenterDialog } from "@/components/ui/center-dialog";
 import { useI18n } from "@/hooks/useI18n";
 import { SettingsPanel, type SettingsTab } from "./SettingsPanel";
 
-/** Full settings UI in a popup — defaults to the tab relevant to the calling page. */
+/**
+ * Shared settings popup — same shell everywhere.
+ * Callers only differ by which tab opens first (`defaultTab`).
+ */
 export function SettingsDialog({
   open,
   onClose,
@@ -41,4 +44,15 @@ export function SettingsDialog({
       />
     </CenterDialog>
   );
+}
+
+/** @deprecated Use SettingsDialog with defaultTab="p2p". */
+export function ConnectivitySettingsDialog({
+  open,
+  onClose,
+}: {
+  open: boolean;
+  onClose: () => void;
+}) {
+  return <SettingsDialog open={open} onClose={onClose} defaultTab="p2p" />;
 }

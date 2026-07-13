@@ -18,6 +18,7 @@ import { ALL_THEME_IDS, THEME_CLASS } from "@/lib/theme";
 import { useI18n } from "@/hooks/useI18n";
 import { useFontSizeStore } from "@/store/useFontSizeStore";
 import { useThemeStore } from "@/store/useThemeStore";
+import { useSettingsPreviewStore } from "@/store/useSettingsPreviewStore";
 
 const NAV_ITEMS = [
   { to: "/", labelKey: "nav.home", icon: Home, end: true },
@@ -68,7 +69,7 @@ export function Sidebar() {
       </nav>
 
       <div className="px-6 py-4 text-xs text-muted-foreground">
-        v0.3.0 · Linux
+        v{__APP_VERSION__} · Linux
       </div>
     </aside>
   );
@@ -86,9 +87,11 @@ export function LanguageSync() {
   return null;
 }
 
-/** Applies the persisted root font-size scale to `<html>`. */
+/** Applies the active (preview or persisted) root font-size scale to `<html>`. */
 export function FontSizeSync() {
-  const fontSize = useFontSizeStore((s) => s.fontSize);
+  const committed = useFontSizeStore((s) => s.fontSize);
+  const preview = useSettingsPreviewStore((s) => s.fontSize);
+  const fontSize = preview ?? committed;
 
   useEffect(() => {
     const root = document.documentElement;
@@ -100,9 +103,11 @@ export function FontSizeSync() {
   return null;
 }
 
-/** Applies the persisted color palette to `<html>`. */
+/** Applies the active (preview or persisted) color palette to `<html>`. */
 export function ThemeSync() {
-  const theme = useThemeStore((s) => s.theme);
+  const committed = useThemeStore((s) => s.theme);
+  const preview = useSettingsPreviewStore((s) => s.theme);
+  const theme = preview ?? committed;
 
   useEffect(() => {
     const root = document.documentElement;

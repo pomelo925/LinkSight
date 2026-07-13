@@ -15,7 +15,9 @@ export const useThemeStore = create<ThemeState>()(
     }),
     {
       name: "linksight-theme",
-      // Fall back to the default if a removed theme (e.g. lagoon-teal) was persisted.
+      // v2: brand default rose-charcoal. Clears stale v0.2.x "default" (slate-blue) etc.
+      version: 2,
+      migrate: () => ({ theme: DEFAULT_THEME }),
       merge: (persisted, current) => {
         const saved = (persisted as Partial<ThemeState> | undefined)?.theme;
         const theme =
