@@ -42,7 +42,10 @@ export function CenterDialog({
         onClick={onClose}
       />
       <Card
-        className={cn("relative z-10 w-full max-w-md shadow-xl", className)}
+        className={cn(
+          "relative z-10 flex w-full max-w-md flex-col overflow-hidden shadow-xl",
+          className,
+        )}
       >
         <CardHeader className="flex shrink-0 flex-row items-center justify-between space-y-0 pb-2">
           <CardTitle className="text-base">{title}</CardTitle>
@@ -56,7 +59,9 @@ export function CenterDialog({
             <X className="h-4 w-4" />
           </Button>
         </CardHeader>
-        <CardContent className={bodyClassName}>{children}</CardContent>
+        <CardContent className={cn("min-h-0 flex-1", bodyClassName)}>
+          {children}
+        </CardContent>
       </Card>
     </div>
   );
