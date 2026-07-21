@@ -1,6 +1,6 @@
 {
   "name": "linksight",
-  "version": "1.0.2",
+  "version": "1.1.0",
   "description": "Linux-first network diagnostics and connectivity analysis desktop app",
   "type": "module",
   "license": "MIT",
