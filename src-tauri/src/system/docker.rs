@@ -151,11 +151,7 @@ struct DockerDiskUsageLine {
 fn docker_bin() -> &'static str {
     static BIN: OnceLock<String> = OnceLock::new();
     BIN.get_or_init(|| {
-        for candidate in [
-            "/usr/bin/docker",
-            "/usr/local/bin/docker",
-            "/bin/docker",
-        ] {
+        for candidate in ["/usr/bin/docker", "/usr/local/bin/docker", "/bin/docker"] {
             if Path::new(candidate).is_file() {
                 return candidate.to_string();
             }
@@ -167,19 +163,13 @@ fn docker_bin() -> &'static str {
 
 async fn docker_output(args: &[&str]) -> Result<String> {
     let bin = docker_bin();
-    let output = Command::new(bin)
-        .args(args)
-        .output()
-        .await
-        .map_err(|e| {
-            if e.kind() == std::io::ErrorKind::NotFound {
-                LinkSightError::CommandFailed(
-                    "Docker is not installed or not available in PATH".into(),
-                )
-            } else {
-                LinkSightError::Io(e)
-            }
-        })?;
+    let output = Command::new(bin).args(args).output().await.map_err(|e| {
+        if e.kind() == std::io::ErrorKind::NotFound {
+            LinkSightError::CommandFailed("Docker is not installed or not available in PATH".into())
+        } else {
+            LinkSightError::Io(e)
+        }
+    })?;
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
@@ -258,11 +248,7 @@ pub async fn list_containers() -> Result<Vec<DockerContainer>> {
 async fn container_stats_map() -> Result<HashMap<String, (String, String)>> {
     let stdout =
         docker_output(&["stats", "--no-stream", "--all", "--format", "{{json .}}"]).await?;
-    let lines = parse_json_lines(
-        &stdout,
-        |raw: DockerStatsLine| raw,
-        "docker stats line",
-    )?;
+    let lines = parse_json_lines(&stdout, |raw: DockerStatsLine| raw, "docker stats line")?;
 
     let mut map = HashMap::new();
     for line in lines {
@@ -310,10 +296,7 @@ fn apply_stats(
     host_cpus: u32,
 ) {
     for c in containers.iter_mut() {
-        let hit = stats
-            .get(&c.id)
-            .or_else(|| stats.get(&c.names))
-            .cloned();
+        let hit = stats.get(&c.id).or_else(|| stats.get(&c.names)).cloned();
         if let Some((cpu, mem)) = hit {
             c.cpu_perc = normalize_cpu_perc(&cpu, host_cpus);
             c.mem_usage = mem;
@@ -345,8 +328,7 @@ fn parse_docker_size_bytes(raw: &str) -> u64 {
     }
     // Prefer first token; if unit is separate (`22.43 GB`), join for parsing.
     let parts: Vec<&str> = trimmed.split_whitespace().collect();
-    let cleaned = if parts.len() >= 2 && parts[0].chars().all(|c| c.is_ascii_digit() || c == '.')
-    {
+    let cleaned = if parts.len() >= 2 && parts[0].chars().all(|c| c.is_ascii_digit() || c == '.') {
         format!("{}{}", parts[0], parts[1])
     } else {
         parts[0].to_string()
@@ -497,12 +479,7 @@ fn parse_df_entries(stdout: &str) -> Vec<DfEntry> {
 
 fn collect_disk_models(dev: &LsblkDevice, out: &mut HashMap<String, String>) {
     if dev.type_name == "disk" {
-        let model = dev
-            .model
-            .as_deref()
-            .unwrap_or("")
-            .trim()
-            .to_string();
+        let model = dev.model.as_deref().unwrap_or("").trim().to_string();
         if !model.is_empty() {
             out.insert(dev.name.clone(), model);
         }
@@ -661,10 +638,7 @@ fn validate_ref(value: &str, label: &str) -> Result<()> {
     if v.is_empty() {
         return Err(LinkSightError::InvalidInput(format!("{label} is required")));
     }
-    if v.starts_with('-')
-        || v.contains('\0')
-        || v.chars().any(|c| c.is_whitespace())
-    {
+    if v.starts_with('-') || v.contains('\0') || v.chars().any(|c| c.is_whitespace()) {
         return Err(LinkSightError::InvalidInput(format!("invalid {label}")));
     }
     Ok(())
@@ -703,7 +677,9 @@ pub async fn rename_image(
     let repository = repository.trim();
     let tag = tag.trim();
     if repository.is_empty() {
-        return Err(LinkSightError::InvalidInput("repository is required".into()));
+        return Err(LinkSightError::InvalidInput(
+            "repository is required".into(),
+        ));
     }
     if tag.is_empty() {
         return Err(LinkSightError::InvalidInput("tag is required".into()));
@@ -714,7 +690,9 @@ pub async fn rename_image(
         || tag.contains('\0')
         || tag.contains('/')
     {
-        return Err(LinkSightError::InvalidInput("invalid repository or tag".into()));
+        return Err(LinkSightError::InvalidInput(
+            "invalid repository or tag".into(),
+        ));
     }
 
     let new_ref = format!("{repository}:{tag}");
