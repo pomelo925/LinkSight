@@ -9,6 +9,7 @@ import { Speedtest } from "@/pages/Speedtest";
 import { Connectivity } from "@/pages/Connectivity";
 import { Sftp } from "@/pages/Sftp";
 import { Settings } from "@/pages/Settings";
+import { Docker } from "@/pages/Docker";
 import { useHostStore } from "@/store/useHostStore";
 import { isTauri } from "@/lib/tauri";
 
@@ -36,6 +37,7 @@ export default function App() {
         <Route path="speedtest" element={<Speedtest />} />
         <Route path="connectivity" element={<Connectivity />} />
         <Route path="sftp" element={<Sftp />} />
+        <Route path="docker" element={<Docker />} />
         <Route path="settings" element={<Settings />} />
       </Route>
     </Routes>

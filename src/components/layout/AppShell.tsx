@@ -20,8 +20,9 @@ export function AppShell() {
   const isSpeedtest = location.pathname === "/speedtest";
   const isConnectivity = location.pathname === "/connectivity";
   const isSettings = location.pathname === "/settings";
+  const isDocker = location.pathname === "/docker";
   const isFixedLayout =
-    isScan || isSftp || isSpeedtest || isConnectivity || isSettings;
+    isScan || isSftp || isSpeedtest || isConnectivity || isSettings || isDocker;
 
   // Freeze enter duration on pathname change so clearing location.state mid-fade
   // cannot retarget / restart the opacity animation (that caused visible flashes).
@@ -51,7 +52,7 @@ export function AppShell() {
           className={cn(
             "w-full",
             isFixedLayout && "flex h-full min-h-0 flex-col overflow-hidden px-8",
-            (isScan || isSpeedtest || isSftp || isConnectivity) && "py-8",
+            (isScan || isSpeedtest || isSftp || isConnectivity || isDocker) && "py-8",
             isSettings && "pt-6 pb-2",
             !isFixedLayout && "px-8 py-8",
           )}

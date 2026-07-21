@@ -12,6 +12,8 @@ import type {
   FileEntryKind,
   HostRecord,
   InterfaceInfo,
+  DockerImage,
+  DockerOverview,
   FileListing,
   NetworkTestResult,
   PingOptions,
@@ -214,6 +216,48 @@ export function sftpDownload(
 /** Enumerate the local machine's network interfaces. */
 export function listNetworkInterfaces(): Promise<InterfaceInfo[]> {
   return tauriInvoke<InterfaceInfo[]>("list_network_interfaces");
+}
+
+/** List local Docker images via the host `docker` CLI. */
+export function listDockerImages(): Promise<DockerImage[]> {
+  return tauriInvoke<DockerImage[]>("list_docker_images");
+}
+
+/** Containers, images, and `docker system df` for the Docker Stats page. */
+export function getDockerOverview(): Promise<DockerOverview> {
+  return tauriInvoke<DockerOverview>("get_docker_overview");
+}
+
+export function dockerStopContainer(id: string): Promise<void> {
+  return tauriInvoke<void>("docker_stop_container", { id });
+}
+
+export function dockerRestartContainer(id: string): Promise<void> {
+  return tauriInvoke<void>("docker_restart_container", { id });
+}
+
+export function dockerRemoveContainer(id: string): Promise<void> {
+  return tauriInvoke<void>("docker_remove_container", { id });
+}
+
+export function dockerRenameImage(params: {
+  id: string;
+  oldRepository: string;
+  oldTag: string;
+  repository: string;
+  tag: string;
+}): Promise<void> {
+  return tauriInvoke<void>("docker_rename_image", {
+    id: params.id,
+    oldRepository: params.oldRepository,
+    oldTag: params.oldTag,
+    repository: params.repository,
+    tag: params.tag,
+  });
+}
+
+export function dockerRemoveImage(idOrRef: string): Promise<void> {
+  return tauriInvoke<void>("docker_remove_image", { idOrRef });
 }
 
 // ---- Saved hosts (Termius-style host manager) --------------------------------

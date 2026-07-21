@@ -22,6 +22,7 @@ use crate::ssh::exec::SshTarget;
 use crate::ssh::keys::{PrivateKeyValidation, PublicKeyValidation};
 use crate::ssh::sftp;
 use crate::ssh::verify::{self, VerifyResult};
+use crate::system::docker::{self, DockerImage, DockerOverview};
 use crate::system::interface::{list_interfaces, InterfaceInfo};
 use crate::AppState;
 
@@ -363,6 +364,49 @@ pub async fn sftp_download(
 #[tauri::command]
 pub async fn list_network_interfaces() -> Result<Vec<InterfaceInfo>, crate::error::LinkSightError> {
     list_interfaces()
+}
+
+/// List local Docker images via the `docker` CLI.
+#[tauri::command]
+pub async fn list_docker_images() -> Result<Vec<DockerImage>, crate::error::LinkSightError> {
+    docker::list_images().await
+}
+
+/// Containers + images + `docker system df` for the Docker Stats page.
+#[tauri::command]
+pub async fn get_docker_overview() -> Result<DockerOverview, crate::error::LinkSightError> {
+    docker::overview().await
+}
+
+#[tauri::command]
+pub async fn docker_stop_container(id: String) -> Result<(), LinkSightError> {
+    docker::stop_container(&id).await
+}
+
+#[tauri::command]
+pub async fn docker_restart_container(id: String) -> Result<(), LinkSightError> {
+    docker::restart_container(&id).await
+}
+
+#[tauri::command]
+pub async fn docker_remove_container(id: String) -> Result<(), LinkSightError> {
+    docker::remove_container(&id).await
+}
+
+#[tauri::command]
+pub async fn docker_rename_image(
+    id: String,
+    old_repository: String,
+    old_tag: String,
+    repository: String,
+    tag: String,
+) -> Result<(), LinkSightError> {
+    docker::rename_image(&id, &old_repository, &old_tag, &repository, &tag).await
+}
+
+#[tauri::command]
+pub async fn docker_remove_image(id_or_ref: String) -> Result<(), LinkSightError> {
+    docker::remove_image(&id_or_ref).await
 }
 
 // ---- Saved hosts (Termius-style host manager) --------------------------------

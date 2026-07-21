@@ -16,6 +16,11 @@ x-common-settings: &common
     - "/tmp/.X11-unix:/tmp/.X11-unix"
     - "/etc/localtime:/etc/localtime:ro"
 
+    # Host Docker daemon — Docker Stats talks to the host engine from inside
+    # the dev container (requires the host `docker` CLI binary on PATH).
+    - "/var/run/docker.sock:/var/run/docker.sock"
+    - "/usr/bin/docker:/usr/bin/docker:ro"
+
     # Source tree (live editing from the host)
     - "..:/workspace"
 

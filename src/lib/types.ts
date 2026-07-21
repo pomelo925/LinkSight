@@ -308,6 +308,62 @@ export interface InterfaceInfo {
   txBytes: number;
 }
 
+/** Local Docker image summary (mirrors `DockerImage` in `system/docker.rs`). */
+export interface DockerImage {
+  id: string;
+  repository: string;
+  tag: string;
+  size: string;
+  createdSince: string;
+  createdAt: string;
+}
+
+/** Local Docker container summary (mirrors `DockerContainer`). */
+export interface DockerContainer {
+  id: string;
+  names: string;
+  image: string;
+  command: string;
+  status: string;
+  state: string;
+  ports: string;
+  createdAt: string;
+  runningFor: string;
+  size: string;
+  /** From `docker stats` (e.g. `"0.04%"`); empty when unavailable. */
+  cpuPerc: string;
+  /** From `docker stats` (e.g. `"690.2MiB / 31.09GiB"`); empty when unavailable. */
+  memUsage: string;
+}
+
+/** One `docker system df` row (mirrors `DockerDiskUsage`). */
+export interface DockerDiskUsage {
+  typeName: string;
+  totalCount: string;
+  active: string;
+  size: string;
+  reclaimable: string;
+}
+
+/** One physical disk with capacity + Docker share (mirrors `HostDiskUsage`). */
+export interface HostDiskUsage {
+  name: string;
+  model: string;
+  mount: string;
+  totalBytes: number;
+  usedBytes: number;
+  availableBytes: number;
+  dockerBytes: number;
+}
+
+/** Combined Docker Stats snapshot (mirrors `DockerOverview`). */
+export interface DockerOverview {
+  containers: DockerContainer[];
+  images: DockerImage[];
+  diskUsage: DockerDiskUsage[];
+  hostDisks: HostDiskUsage[];
+}
+
 /**
  * Streamed speed-test progress (mirrors `SpeedtestProgress` in the backend).
  * `progress` is 0–1 within the current phase.

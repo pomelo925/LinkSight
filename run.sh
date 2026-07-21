@@ -66,6 +66,15 @@ setup_x11() {
 start_container() {
   local recycle="${1:-false}"
 
+  # Compose volume changes (e.g. docker.sock) require recreate — detect a stale
+  # container that is missing the host Docker socket mount.
+  if [ "$recycle" != true ] && docker container inspect "$CONTAINER_NAME" >/dev/null 2>&1; then
+    if ! docker exec "$CONTAINER_NAME" test -S /var/run/docker.sock 2>/dev/null; then
+      echo "Dev container is missing /var/run/docker.sock — recreating to pick up compose mounts..."
+      recycle=true
+    fi
+  fi
+
   if [ "$recycle" = true ] && docker container inspect "$CONTAINER_NAME" >/dev/null 2>&1; then
     echo "Existing container detected ($CONTAINER_NAME) — stopping (grace 1s) and removing..."
     docker compose -p "$PROJECT_NAME" -f "$COMPOSE_FILE" down --remove-orphans
