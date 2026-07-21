@@ -1,4 +1,4 @@
-import { memo, useState } from "react";
+import { memo, useEffect, useState } from "react";
 import { Radar, Monitor, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -30,14 +30,20 @@ function TruncatedCell({
 /** Isolated form — typing only re-renders this lightweight subtree. */
 function ScanForm({
   status,
+  initialCidr,
   onSubmit,
 }: {
   status: TestStatus;
+  initialCidr: string;
   onSubmit: (cidr: string) => void;
 }) {
   const { t } = useI18n();
-  const [cidr, setCidr] = useState("");
+  const [cidr, setCidr] = useState(initialCidr);
   const busy = status === "running" || status === "analyzing";
+
+  useEffect(() => {
+    if (initialCidr && !cidr) setCidr(initialCidr);
+  }, [initialCidr, cidr]);
 
   return (
     <Card>
@@ -205,7 +211,7 @@ export function ScanTest() {
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-hidden">
       <div className="shrink-0">
-        <ScanForm status={status} onSubmit={execute} />
+        <ScanForm status={status} initialCidr={lastCidr} onSubmit={execute} />
       </div>
       <ScanResults
         result={result}

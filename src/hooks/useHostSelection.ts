@@ -4,18 +4,22 @@ import { useHomeStore } from "@/store/useHomeStore";
 import type { HostRecord } from "@/lib/types";
 
 /**
- * Selects a remote peer as the active host and kicks off a quick SSH
- * verification (shared by the Home and Connectivity pages so both keep the
- * same verify status).
+ * Selects a remote peer as the active host and kicks off host verification
+ * (TCP reachability + auth). Shared by Home and Connectivity so both keep the
+ * same verify status.
  */
 export function useHostSelection() {
-  const selectHost = useHomeStore((s) => s.selectHost);
   const setVerify = useHomeStore((s) => s.setVerify);
 
   return useCallback(
     async (host: HostRecord): Promise<void> => {
-      selectHost(host);
-      setVerify("verifying");
+      // Atomic select + verifying — avoids an idle frame that would re-trigger
+      // mount-time verification on the Connectivity page.
+      useHomeStore.setState({
+        selectedHost: host,
+        verifyStatus: "verifying",
+        verifyResult: null,
+      });
       try {
         const r = await verifyHost({
           authMode: host.authMode ?? "ssh",
@@ -40,6 +44,6 @@ export function useHostSelection() {
         });
       }
     },
-    [selectHost, setVerify],
+    [setVerify],
   );
 }

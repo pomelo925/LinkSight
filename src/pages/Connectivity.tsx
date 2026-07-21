@@ -7,6 +7,9 @@ import {
   Plus,
   Activity,
   SlidersHorizontal,
+  Loader2,
+  CheckCircle2,
+  XCircle,
 } from "lucide-react";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { HostCircle } from "@/features/network/HostCircle";
@@ -20,7 +23,7 @@ import { useConnectivity } from "@/hooks/useConnectivity";
 import { useHostSelection } from "@/hooks/useHostSelection";
 import { useI18n } from "@/hooks/useI18n";
 import { isTauri } from "@/lib/tauri";
-import { cn } from "@/lib/utils";
+import { cn, formatMs } from "@/lib/utils";
 import type { ConnectivityPhase, HostRecord } from "@/lib/types";
 import {
   ConnectivityMetricsGrid,
@@ -36,6 +39,8 @@ function hostEndpoint(h: HostRecord): string {
 export function Connectivity() {
   const { t } = useI18n();
   const selectedHost = useHomeStore((s) => s.selectedHost);
+  const verifyStatus = useHomeStore((s) => s.verifyStatus);
+  const verifyResult = useHomeStore((s) => s.verifyResult);
   const hostsLoad = useHostStore((s) => s.load);
   const { execute, status, progress, result, hostId } = useConnectivity();
   const selectAndVerify = useHostSelection();
@@ -65,12 +70,19 @@ export function Connectivity() {
     if (isTauri()) hostsLoad().catch(() => undefined);
   }, [hostsLoad]);
 
+  // Host already selected (e.g. navigated here) but not yet verified — match Home.
+  useEffect(() => {
+    if (!selectedHost || verifyStatus !== "idle" || !isTauri()) return;
+    void selectAndVerify(selectedHost);
+  }, [selectedHost, verifyStatus, selectAndVerify]);
+
   const pickHost = (host: HostRecord) => {
     setPickerOpen(false);
     void selectAndVerify(host);
   };
 
   const running = status === "running" || status === "analyzing";
+  const verified = verifyStatus === "ok";
   const resultForHost = result && hostId === selectedHost?.id ? result : null;
   const failed = !running && resultForHost?.status === "failed";
   const values = connectivityMetricValues(running ? progress : null, running ? null : resultForHost);
@@ -85,10 +97,10 @@ export function Connectivity() {
       <Card className="shrink-0">
         <CardContent className="relative px-4 py-5 sm:px-6">
           {selectedHost && (
-            <div className="absolute left-4 top-4 z-10 sm:left-5 sm:top-5">
+            <div className="absolute left-4 top-4 z-10 flex flex-col items-start gap-2 sm:left-5 sm:top-5">
               <Button
                 size="sm"
-                disabled={running || !isTauri()}
+                disabled={running || !isTauri() || !verified}
                 onClick={() => execute(selectedHost)}
               >
                 <Activity className="h-4 w-4" />
@@ -96,6 +108,31 @@ export function Connectivity() {
                   ? t("connectivity.actions.runAgain")
                   : t("connectivity.actions.runTest")}
               </Button>
+              {verifyStatus === "verifying" && (
+                <span className="flex items-center gap-1.5 text-xs text-primary">
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  {t("home.verify.verifying")}
+                </span>
+              )}
+              {verifyStatus === "ok" && (
+                <span className="flex items-center gap-1.5 text-xs text-success">
+                  <CheckCircle2 className="h-3.5 w-3.5" />
+                  {t("home.verify.verified")}
+                  {verifyResult?.latencyMs != null &&
+                    ` · ${formatMs(verifyResult.latencyMs)}`}
+                </span>
+              )}
+              {verifyStatus === "failed" && (
+                <span
+                  className="flex max-w-[14rem] items-start gap-1.5 text-xs text-destructive"
+                  title={verifyResult?.message ?? undefined}
+                >
+                  <XCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                  <span className="line-clamp-2">
+                    {verifyResult?.message ?? t("home.verify.failed")}
+                  </span>
+                </span>
+              )}
             </div>
           )}
 
@@ -169,6 +206,21 @@ export function Connectivity() {
                 <Button asChild size="sm" variant="secondary">
                   <Link to="/hosts">{t("connectivity.actions.manageHosts")}</Link>
                 </Button>
+              </CardContent>
+            </Card>
+          ) : verifyStatus === "verifying" ? (
+            <Card>
+              <CardContent className="flex items-center justify-center gap-2 py-10 text-sm text-muted-foreground">
+                <Loader2 className="h-4 w-4 animate-spin text-primary" />
+                {t("home.verify.verifying")}
+              </CardContent>
+            </Card>
+          ) : verifyStatus === "failed" ? (
+            <Card>
+              <CardContent className="py-6">
+                <p className="text-sm text-destructive">
+                  {verifyResult?.message ?? t("home.verify.failed")}
+                </p>
               </CardContent>
             </Card>
           ) : failed ? (

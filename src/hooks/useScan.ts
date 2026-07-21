@@ -8,8 +8,8 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
  * Drives a LAN scan through the standard flow:
  *   idle → running → analyzing → success/failed
  *
- * State lives in `useScanStore` so results persist across page navigation
- * until the next scan.
+ * State lives in `useScanStore` so results persist across page navigation.
+ * A refresh keeps the previous result visible until the new one arrives.
  */
 export function useScan() {
   const status = useScanStore((s) => s.status);
@@ -23,6 +23,7 @@ export function useScan() {
     async (cidr: string): Promise<void> => {
       setLastCidr(cidr);
       setStatus("running");
+      // Keep the previous result on screen until the new scan finishes.
       try {
         const r = await runScan(cidr);
         setStatus("analyzing");
@@ -49,8 +50,9 @@ export function useScan() {
   );
 
   const refresh = useCallback(async (): Promise<void> => {
-    await execute(lastCidr);
-  }, [execute, lastCidr]);
+    const cidr = useScanStore.getState().lastCidr;
+    await execute(cidr);
+  }, [execute]);
 
   return { execute, refresh, status, result, lastCidr };
 }
