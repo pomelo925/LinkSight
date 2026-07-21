@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Save } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { HOVER_POP_GROUP } from "@/lib/interactive";
 import { cn } from "@/lib/utils";
 import { LOCALES, type Locale } from "@/lib/i18n";
 import { FONT_SIZES, FONT_SIZE_PREVIEW_PX, type FontSize } from "@/lib/fontSize";
@@ -42,14 +43,14 @@ function SettingsTabBar({
           type="button"
           onClick={() => onChange(tab.id)}
           className={cn(
-            "-mb-px rounded-t-md border border-b-0 px-4 py-2.5 text-sm font-medium transition-colors",
+            "group -mb-px rounded-t-md border border-b-0 px-4 py-2.5 text-sm font-medium transition-colors",
             "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
             value === tab.id
               ? "border-border bg-card text-foreground"
               : "border-transparent text-muted-foreground hover:text-foreground",
           )}
         >
-          {t(tab.labelKey)}
+          <span className={cn("inline-block", HOVER_POP_GROUP)}>{t(tab.labelKey)}</span>
         </button>
       ))}
     </div>
@@ -93,14 +94,14 @@ function LanguageSelector({
           type="button"
           onClick={() => onChange(opt.value)}
           className={cn(
-            "whitespace-nowrap rounded-md border px-3 py-2 text-sm font-medium transition-colors",
+            "group whitespace-nowrap rounded-md border px-3 py-2 text-sm font-medium transition-colors",
             "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
             value === opt.value
               ? "border-primary bg-primary/10 text-primary"
               : "border-input text-muted-foreground hover:border-primary/50 hover:text-foreground",
           )}
         >
-          {opt.label}
+          <span className={cn("inline-block", HOVER_POP_GROUP)}>{opt.label}</span>
         </button>
       ))}
     </div>
@@ -124,21 +125,23 @@ function FontSizeSelector({
           type="button"
           onClick={() => onChange(opt.value)}
           className={cn(
-            "flex flex-col items-center gap-1 rounded-md border px-3 py-3 transition-colors",
+            "group flex flex-col items-center gap-1 rounded-md border px-3 py-3 transition-colors",
             "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
             value === opt.value
               ? "border-primary bg-primary/10 text-primary"
               : "border-input text-muted-foreground hover:border-primary/50 hover:text-foreground",
           )}
         >
-          <span
-            className="font-semibold leading-none"
-            style={{ fontSize: FONT_SIZE_PREVIEW_PX[opt.value] }}
-            aria-hidden
-          >
-            Aa
+          <span className={cn("flex flex-col items-center gap-1", HOVER_POP_GROUP)}>
+            <span
+              className="font-semibold leading-none"
+              style={{ fontSize: FONT_SIZE_PREVIEW_PX[opt.value] }}
+              aria-hidden
+            >
+              Aa
+            </span>
+            <span className="whitespace-nowrap text-xs font-medium">{t(opt.labelKey)}</span>
           </span>
-          <span className="whitespace-nowrap text-xs font-medium">{t(opt.labelKey)}</span>
         </button>
       ))}
     </div>
@@ -162,28 +165,30 @@ function ThemeSelector({
           type="button"
           onClick={() => onChange(theme.id)}
           className={cn(
-            "flex flex-col gap-2 rounded-lg border p-3 text-left transition-colors",
+            "group flex flex-col gap-2 rounded-lg border p-3 text-left transition-colors",
             "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
             value === theme.id
               ? "border-primary bg-primary/10"
               : "border-input hover:border-primary/50",
           )}
         >
-          <div
-            className="flex h-7 overflow-hidden rounded-md border border-border/40"
-            aria-hidden
-          >
-            {theme.swatches.map((color) => (
-              <span key={color} className="min-w-0 flex-1" style={{ backgroundColor: color }} />
-            ))}
-          </div>
-          <span
-            className={cn(
-              "text-sm font-medium",
-              value === theme.id ? "text-primary" : "text-foreground",
-            )}
-          >
-            {t(theme.labelKey)}
+          <span className={cn("flex flex-col gap-2", HOVER_POP_GROUP)}>
+            <div
+              className="flex h-7 overflow-hidden rounded-md border border-border/40"
+              aria-hidden
+            >
+              {theme.swatches.map((color) => (
+                <span key={color} className="min-w-0 flex-1" style={{ backgroundColor: color }} />
+              ))}
+            </div>
+            <span
+              className={cn(
+                "text-sm font-medium",
+                value === theme.id ? "text-primary" : "text-foreground",
+              )}
+            >
+              {t(theme.labelKey)}
+            </span>
           </span>
         </button>
       ))}
@@ -300,8 +305,6 @@ export function SettingsTabContent({
   onSaveActionsChange?: (actions: SettingsSaveActions | null) => void;
 }) {
   const { t } = useI18n();
-  // P2P keeps its own inline Save on the page; dialog mode uses the panel footer.
-  const reportP2pSave = variant === "dialog" ? onSaveActionsChange : undefined;
 
   if (tab === "general") {
     return (
@@ -332,7 +335,7 @@ export function SettingsTabContent({
       <ConnectivitySettingsForm
         variant={variant === "dialog" ? "dialog" : "inline"}
         resetToken={resetToken}
-        onSaveActionsChange={reportP2pSave}
+        onSaveActionsChange={onSaveActionsChange}
       />
     </SettingsSection>
   );

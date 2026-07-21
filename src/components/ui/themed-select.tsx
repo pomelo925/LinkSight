@@ -1,5 +1,6 @@
 import * as React from "react";
 import { ChevronDown } from "lucide-react";
+import { HOVER_POP_GROUP } from "@/lib/interactive";
 import { cn } from "@/lib/utils";
 
 export type ThemedSelectOption = {
@@ -59,20 +60,22 @@ export function ThemedSelect({
         aria-expanded={open}
         onClick={() => setOpen((v) => !v)}
         className={cn(
-          "flex h-10 w-full items-center justify-between gap-2 rounded-md border border-input",
+          "group flex h-10 w-full items-center justify-between gap-2 rounded-md border border-input",
           "bg-background px-3 py-2 text-left text-sm text-foreground",
           "ring-offset-background hover:border-primary/50",
           "focus-visible:outline-none focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-ring",
           "disabled:cursor-not-allowed disabled:opacity-50",
         )}
       >
-        <span className="min-w-0 truncate">{selected?.label}</span>
-        <ChevronDown
-          className={cn(
-            "h-4 w-4 shrink-0 text-muted-foreground transition-transform",
-            open && "rotate-180",
-          )}
-        />
+        <span className={cn("inline-flex min-w-0 flex-1 items-center justify-between gap-2", HOVER_POP_GROUP)}>
+          <span className="min-w-0 truncate">{selected?.label}</span>
+          <ChevronDown
+            className={cn(
+              "h-4 w-4 shrink-0 text-muted-foreground transition-transform",
+              open && "rotate-180",
+            )}
+          />
+        </span>
       </button>
 
       {open && (
@@ -97,7 +100,7 @@ export function ThemedSelect({
                     setOpen(false);
                   }}
                   className={cn(
-                    "flex w-full items-center px-3 py-2 text-left text-sm transition-colors",
+                    "group flex w-full items-center px-3 py-2 text-left text-sm transition-colors",
                     "focus-visible:outline-none focus-visible:bg-accent focus-visible:text-accent-foreground",
                     "disabled:cursor-not-allowed disabled:opacity-50",
                     active
@@ -105,7 +108,7 @@ export function ThemedSelect({
                       : "text-foreground hover:bg-muted hover:text-foreground",
                   )}
                 >
-                  {opt.label}
+                  <span className={cn("inline-block", HOVER_POP_GROUP)}>{opt.label}</span>
                 </button>
               </li>
             );

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Info } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { HOVER_POP_ICON } from "@/lib/interactive";
 
 const TOOLTIP_WIDTH_PX = 240;
 const TOOLTIP_GAP_PX = 6;
@@ -119,6 +120,7 @@ export function InfoHint({
           "inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full align-middle",
           "text-muted-foreground/70 transition-colors",
           "hover:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+          HOVER_POP_ICON,
           className,
         )}
         onMouseEnter={show}

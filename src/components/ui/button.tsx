@@ -1,9 +1,8 @@
 import * as React from "react";
 import { Slot } from "@radix-ui/react-slot";
 import { cva, type VariantProps } from "class-variance-authority";
+import { HOVER_POP_GROUP } from "@/lib/interactive";
 import { cn } from "@/lib/utils";
-
-const FILLED_VARIANTS = new Set(["default", "secondary", "destructive"]);
 
 const buttonVariants = cva(
   "inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 [&_svg]:size-4 [&_svg]:shrink-0",
@@ -36,8 +35,10 @@ const buttonVariants = cva(
   },
 );
 
-const labelHoverClass =
-  "inline-flex items-center justify-center gap-2 transition-transform duration-150 group-hover:scale-105 group-active:scale-100";
+const labelHoverClass = cn(
+  "inline-flex items-center justify-center gap-2",
+  HOVER_POP_GROUP,
+);
 
 export interface ButtonProps
   extends React.ButtonHTMLAttributes<HTMLButtonElement>,
@@ -47,13 +48,14 @@ export interface ButtonProps
 
 const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
   ({ className, variant, size, asChild = false, children, ...props }, ref) => {
-    const filled = FILLED_VARIANTS.has(variant ?? "default");
+    // All clickable variants get the shared hover pop (link stays text-only).
+    const interactive = (variant ?? "default") !== "link";
     const classes = cn(
       buttonVariants({ variant, size, className }),
-      filled && "group",
+      interactive && "group",
     );
 
-    const label = filled ? (
+    const label = interactive ? (
       <span className={labelHoverClass}>{children}</span>
     ) : (
       children
@@ -65,7 +67,7 @@ const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
           {React.cloneElement(
             children as React.ReactElement<{ children?: React.ReactNode }>,
             undefined,
-            filled ? (
+            interactive ? (
               <span className={labelHoverClass}>
                 {(children as React.ReactElement<{ children?: React.ReactNode }>).props.children}
               </span>

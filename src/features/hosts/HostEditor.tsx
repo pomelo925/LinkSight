@@ -10,6 +10,7 @@ import {
   validateSshPublicKey,
 } from "@/lib/api";
 import { useI18n } from "@/hooks/useI18n";
+import { HOVER_POP_GROUP } from "@/lib/interactive";
 import { formatMs, cn } from "@/lib/utils";
 import type {
   HostRecord,
@@ -291,14 +292,16 @@ export function HostEditor({
                 if (mode === "password") onFirstTimeDeployChange(false);
               }}
               className={cn(
-                "-mb-px rounded-t-md border border-b-0 px-4 py-2 text-sm font-medium transition-colors",
+                "group -mb-px rounded-t-md border border-b-0 px-4 py-2 text-sm font-medium transition-colors",
                 "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                 form.authMode === mode
                   ? "border-border bg-card text-foreground"
                   : "border-transparent text-muted-foreground hover:text-foreground",
               )}
             >
-              {mode === "ssh" ? t("hosts.editor.auth.ssh") : t("hosts.editor.auth.password")}
+              <span className={cn("inline-block", HOVER_POP_GROUP)}>
+                {mode === "ssh" ? t("hosts.editor.auth.ssh") : t("hosts.editor.auth.password")}
+              </span>
             </button>
           ))}
         </div>

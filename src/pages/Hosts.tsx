@@ -4,6 +4,7 @@ import { Plus, Server, Trash2 } from "lucide-react";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { HOVER_POP_GROUP } from "@/lib/interactive";
 import { useHostStore } from "@/store/useHostStore";
 import { useI18n } from "@/hooks/useI18n";
 import { cn } from "@/lib/utils";
@@ -126,11 +127,11 @@ export function Hosts() {
               {hosts.map((h) => (
                 <Card
                   key={h.id}
-                  className="w-[17.5rem] cursor-pointer hover:border-primary/60"
+                  className="group w-[17.5rem] cursor-pointer hover:border-primary/60"
                   onClick={() => openEditor(h)}
                 >
                   <CardContent className="flex items-center justify-between gap-3 py-4">
-                    <div className="flex min-w-0 items-center gap-3">
+                    <div className={cn("flex min-w-0 items-center gap-3", HOVER_POP_GROUP)}>
                       <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
                         <Server className="h-5 w-5" />
                       </div>

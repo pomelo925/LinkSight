@@ -5,6 +5,8 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { useI18n } from "@/hooks/useI18n";
 import { useHostStore } from "@/store/useHostStore";
+import { HOVER_POP_GROUP } from "@/lib/interactive";
+import { cn } from "@/lib/utils";
 import type { HostRecord } from "@/lib/types";
 
 /** Dropdown listing saved hosts; anchored below a peer circle. */
@@ -48,14 +50,16 @@ export function HostPicker({
                   key={h.id}
                   type="button"
                   onClick={() => onPick(h)}
-                  className="flex w-full items-center gap-3 rounded-md px-3 py-2 text-left text-sm hover:bg-accent"
+                  className="group flex w-full items-center gap-3 rounded-md px-3 py-2 text-left text-sm hover:bg-accent"
                 >
-                  <Server className="h-4 w-4 shrink-0 text-muted-foreground" />
-                  <span className="min-w-0">
-                    <span className="block truncate font-medium">{h.alias}</span>
-                    <span className="block truncate text-xs text-muted-foreground">
-                      {h.username}@{h.ip}
-                      {h.port != null && h.port > 0 ? `:${h.port}` : ""}
+                  <span className={cn("inline-flex items-center gap-3", HOVER_POP_GROUP)}>
+                    <Server className="h-4 w-4 shrink-0 text-muted-foreground" />
+                    <span className="min-w-0">
+                      <span className="block truncate font-medium">{h.alias}</span>
+                      <span className="block truncate text-xs text-muted-foreground">
+                        {h.username}@{h.ip}
+                        {h.port != null && h.port > 0 ? `:${h.port}` : ""}
+                      </span>
                     </span>
                   </span>
                 </button>

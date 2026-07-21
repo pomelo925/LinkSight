@@ -14,6 +14,7 @@ import { Button } from "@/components/ui/button";
 import { PathInput } from "@/features/sftp/SftpPane";
 import { useI18n } from "@/hooks/useI18n";
 import { localListDir } from "@/lib/api";
+import { HOVER_POP_GROUP } from "@/lib/interactive";
 import { cn } from "@/lib/utils";
 import type { FileEntry, FileEntryKind, FileListing } from "@/lib/types";
 import type { FsStatus } from "@/store/useSftpStore";
@@ -287,10 +288,12 @@ export function LocalKeyFsBrowser({
               <button
                 type="button"
                 onClick={goUp}
-                className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left hover:bg-accent/60"
+                className="group flex w-full items-center gap-2 rounded px-2 py-1.5 text-left hover:bg-accent/60"
               >
-                <CornerLeftUp className="h-4 w-4 text-muted-foreground" />
-                <span className="text-sm text-muted-foreground">..</span>
+                <span className={cn("inline-flex items-center gap-2", HOVER_POP_GROUP)}>
+                  <CornerLeftUp className="h-4 w-4 text-muted-foreground" />
+                  <span className="text-sm text-muted-foreground">..</span>
+                </span>
               </button>
             )}
             {entries.length === 0 && (
@@ -313,12 +316,14 @@ export function LocalKeyFsBrowser({
                     if (navigable) navigate(entry.path);
                   }}
                   className={cn(
-                    "flex w-full items-center gap-2 rounded px-2 py-1.5 text-left transition-colors",
+                    "group flex w-full items-center gap-2 rounded px-2 py-1.5 text-left transition-colors",
                     selectedRow ? "bg-primary/15" : "hover:bg-accent/60",
                   )}
                 >
-                  <EntryIcon kind={entry.kind} />
-                  <span className="min-w-0 flex-1 truncate text-sm">{entry.name}</span>
+                  <span className={cn("inline-flex min-w-0 flex-1 items-center gap-2", HOVER_POP_GROUP)}>
+                    <EntryIcon kind={entry.kind} />
+                    <span className="min-w-0 flex-1 truncate text-sm">{entry.name}</span>
+                  </span>
                 </button>
               );
             })}

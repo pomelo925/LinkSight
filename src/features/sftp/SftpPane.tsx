@@ -10,16 +10,16 @@ import {
   RefreshCw,
   HardDrive,
   ChevronDown,
-  ChevronUp,
-  ChevronsUpDown,
   Loader2,
   Search,
   FolderOpen,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { SortHeader } from "@/components/ui/sort-header";
 import { useI18n } from "@/hooks/useI18n";
 import { dateLocale } from "@/lib/i18n";
+import { HOVER_POP_GROUP, HOVER_POP_GROUP_SUBTLE } from "@/lib/interactive";
 import { cn } from "@/lib/utils";
 import type { FileEntry, FileEntryKind, FileListing } from "@/lib/types";
 import type { FsStatus } from "@/store/useSftpStore";
@@ -234,14 +234,16 @@ function ActionsMenu({
                 onAction(item.id);
               }}
               className={cn(
-                "flex w-full items-center px-3 py-2 text-left text-sm transition-colors hover:bg-accent disabled:cursor-not-allowed disabled:opacity-40",
+                "group flex w-full items-center px-3 py-2 text-left text-sm transition-colors hover:bg-accent disabled:cursor-not-allowed disabled:opacity-40",
                 item.destructive && "text-destructive hover:text-destructive",
               )}
             >
-              {item.label}
-              {item.checked && (
-                <span className="ml-auto text-xs text-primary">✓</span>
-              )}
+              <span className={cn("inline-flex min-w-0 flex-1 items-center", HOVER_POP_GROUP)}>
+                {item.label}
+                {item.checked && (
+                  <span className="ml-auto text-xs text-primary">✓</span>
+                )}
+              </span>
             </button>
           ))}
         </div>
@@ -272,11 +274,11 @@ function FileRow({
       onDoubleClick={navigable ? () => onNavigate(entry.path) : undefined}
       className={cn(
         COLS,
-        "w-full rounded px-2 py-1.5 text-left transition-colors",
+        "group w-full rounded px-2 py-1.5 text-left transition-colors",
         selected ? "bg-primary/15" : "hover:bg-accent/60",
       )}
     >
-      <span className="flex min-w-0 items-center gap-2">
+      <span className={cn("flex min-w-0 items-center gap-2", HOVER_POP_GROUP_SUBTLE)}>
         <EntryIcon kind={entry.kind} />
         <span className="min-w-0">
           <span className="block truncate text-sm">{entry.name}</span>
@@ -292,40 +294,6 @@ function FileRow({
         {formatSize(entry.size, t)}
       </span>
       <span className="text-center text-xs text-muted-foreground">{kindLabel(entry.kind, t)}</span>
-    </button>
-  );
-}
-
-function SortHeader({
-  label,
-  col,
-  sortKey,
-  sortDir,
-  onSort,
-}: {
-  label: string;
-  col: SortKey;
-  sortKey: SortKey;
-  sortDir: SortDir;
-  onSort: (key: SortKey) => void;
-}) {
-  const active = sortKey === col;
-  const Indicator = !active
-    ? ChevronsUpDown
-    : sortDir === "asc"
-      ? ChevronUp
-      : ChevronDown;
-  return (
-    <button
-      type="button"
-      onClick={() => onSort(col)}
-      className={cn(
-        "flex items-center justify-center gap-1 rounded px-1 py-0.5 uppercase tracking-wide transition-colors hover:text-foreground",
-        active ? "bg-primary/10 text-foreground" : "text-muted-foreground",
-      )}
-    >
-      <span className="truncate">{label}</span>
-      <Indicator className={cn("h-3 w-3 shrink-0", !active && "opacity-40")} />
     </button>
   );
 }
@@ -483,10 +451,38 @@ export function SftpPane({
           "shrink-0 border-b border-border px-2 py-1.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground",
         )}
       >
-        <SortHeader label={t("sftp.columns.name")} col="name" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} />
-        <SortHeader label={t("sftp.columns.dateModified")} col="date" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} />
-        <SortHeader label={t("sftp.columns.size")} col="size" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} />
-        <SortHeader label={t("sftp.columns.type")} col="kind" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} />
+        <SortHeader
+          label={t("sftp.columns.name")}
+          col="name"
+          sortKey={sortKey}
+          sortDir={sortDir}
+          onSort={toggleSort}
+          className="justify-center rounded px-1 py-0.5 uppercase tracking-wide"
+        />
+        <SortHeader
+          label={t("sftp.columns.dateModified")}
+          col="date"
+          sortKey={sortKey}
+          sortDir={sortDir}
+          onSort={toggleSort}
+          className="justify-center rounded px-1 py-0.5 uppercase tracking-wide"
+        />
+        <SortHeader
+          label={t("sftp.columns.size")}
+          col="size"
+          sortKey={sortKey}
+          sortDir={sortDir}
+          onSort={toggleSort}
+          className="justify-center rounded px-1 py-0.5 uppercase tracking-wide"
+        />
+        <SortHeader
+          label={t("sftp.columns.type")}
+          col="kind"
+          sortKey={sortKey}
+          sortDir={sortDir}
+          onSort={toggleSort}
+          className="justify-center rounded px-1 py-0.5 uppercase tracking-wide"
+        />
       </div>
 
       {/* Scrollable file list — only internal scroll */}
@@ -528,10 +524,10 @@ export function SftpPane({
                   onClick={onUp}
                   className={cn(
                     COLS,
-                    "w-full rounded px-2 py-1.5 text-left transition-colors hover:bg-accent/60",
+                    "group w-full rounded px-2 py-1.5 text-left transition-colors hover:bg-accent/60",
                   )}
                 >
-                  <span className="flex items-center gap-2">
+                  <span className={cn("flex items-center gap-2", HOVER_POP_GROUP_SUBTLE)}>
                     <CornerLeftUp className="h-4 w-4 text-muted-foreground" />
                     <span className="text-sm text-muted-foreground">..</span>
                   </span>

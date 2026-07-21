@@ -3,6 +3,7 @@ import { Save, RotateCcw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useI18n } from "@/hooks/useI18n";
+import { HOVER_POP_GROUP } from "@/lib/interactive";
 import { cn } from "@/lib/utils";
 import type { SettingsSaveActions } from "@/features/settings/SettingsPanel";
 import {
@@ -64,7 +65,7 @@ function SegmentedControl<T extends string>({
           disabled={disabled}
           onClick={() => onChange(opt.value)}
           className={cn(
-            "whitespace-nowrap rounded-md border px-2 py-2 text-xs font-medium",
+            "group whitespace-nowrap rounded-md border px-2 py-2 text-xs font-medium",
             "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
             "disabled:cursor-not-allowed disabled:opacity-50",
             value === opt.value
@@ -72,7 +73,7 @@ function SegmentedControl<T extends string>({
               : "border-input text-muted-foreground hover:border-primary/50",
           )}
         >
-          {opt.label}
+          <span className={cn("inline-block", HOVER_POP_GROUP)}>{opt.label}</span>
         </button>
       ))}
     </div>
@@ -308,13 +309,16 @@ export function ConnectivitySettingsForm({
   ]);
 
   useEffect(() => {
-    if (variant !== "dialog" || !onSaveActionsChange) return;
+    if (!onSaveActionsChange) return;
     onSaveActionsChange({ canSave, onSave: handleSave });
     return () => onSaveActionsChange(null);
-  }, [variant, canSave, handleSave, onSaveActionsChange]);
+  }, [canSave, handleSave, onSaveActionsChange]);
 
-  const showInlineFooter = variant === "inline";
-  const showStandaloneDialogFooter = variant === "dialog" && !!onClose;
+  // When the parent panel owns Save, keep only Reset in the form (page mode).
+  const usesPanelSave = !!onSaveActionsChange;
+  const showInlineFooter = variant === "inline" && !usesPanelSave;
+  const showStandaloneDialogFooter = variant === "dialog" && !!onClose && !usesPanelSave;
+  const showResetOnly = variant === "inline" && usesPanelSave;
 
   return (
     <div className="space-y-5">
@@ -398,6 +402,14 @@ export function ConnectivitySettingsForm({
               </Button>
             )}
           </div>
+          <Button variant="ghost" size="sm" onClick={handleReset}>
+            <RotateCcw className="h-4 w-4" />
+            {t("connectivity.settings.resetDefaults")}
+          </Button>
+        </div>
+      )}
+      {showResetOnly && (
+        <div className="flex justify-end border-t border-border pt-4">
           <Button variant="ghost" size="sm" onClick={handleReset}>
             <RotateCcw className="h-4 w-4" />
             {t("connectivity.settings.resetDefaults")}
