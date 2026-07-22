@@ -114,6 +114,7 @@ pub fn run() {
             commands::list_hosts,
             commands::save_host,
             commands::delete_host,
+            commands::reorder_hosts,
             commands::verify_host,
             commands::validate_ssh_public_key,
             commands::validate_ssh_private_key,

@@ -282,6 +282,11 @@ export function deleteHost(id: string): Promise<void> {
   return tauriInvoke<void>("delete_host", { id });
 }
 
+/** Persist Hosts-page card order. */
+export function reorderHosts(ids: string[]): Promise<void> {
+  return tauriInvoke<void>("reorder_hosts", { ids });
+}
+
 /** Verify a host: TCP reachability then SSH password or public-key auth. */
 export function verifyHost(params: {
   authMode: "ssh" | "password";

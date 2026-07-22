@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import type { HostRecord } from "@/lib/types";
-import { listHosts, saveHost, deleteHost } from "@/lib/api";
+import { listHosts, saveHost, deleteHost, reorderHosts } from "@/lib/api";
 import { useHomeStore } from "@/store/useHomeStore";
 
 interface HostState {
@@ -10,6 +10,10 @@ interface HostState {
   load: () => Promise<void>;
   save: (host: HostRecord) => Promise<HostRecord>;
   remove: (id: string) => Promise<void>;
+  /** Optimistic local order only (during drag). */
+  applyOrder: (ids: string[]) => void;
+  /** Persist current `hosts` order to the backend. */
+  persistOrder: () => Promise<void>;
 }
 
 export const useHostStore = create<HostState>((set, get) => ({
@@ -40,5 +44,23 @@ export const useHostStore = create<HostState>((set, get) => ({
     if (selected?.id === id) {
       useHomeStore.getState().selectHost(null);
     }
+  },
+
+  applyOrder: (ids) => {
+    const byId = new Map(get().hosts.map((h) => [h.id, h]));
+    const next = ids
+      .map((id) => byId.get(id))
+      .filter((h): h is HostRecord => Boolean(h));
+    for (const h of get().hosts) {
+      if (!ids.includes(h.id)) next.push(h);
+    }
+    const same =
+      next.length === get().hosts.length &&
+      next.every((h, i) => h.id === get().hosts[i]?.id);
+    if (!same) set({ hosts: next });
+  },
+
+  persistOrder: async () => {
+    await reorderHosts(get().hosts.map((h) => h.id));
   },
 }));

@@ -46,7 +46,8 @@ CREATE TABLE IF NOT EXISTS hosts (
     ssh_private_key_path TEXT,
     ssh_public_key       TEXT,
     created_at    TEXT NOT NULL DEFAULT (datetime('now')),
-    updated_at    TEXT
+    updated_at    TEXT,
+    sort_order    INTEGER NOT NULL DEFAULT 0
 );
 
 CREATE TABLE IF NOT EXISTS ssh_sessions (

@@ -549,6 +549,15 @@ fn app_data_dir() -> Result<std::path::PathBuf, LinkSightError> {
         .map_err(|_| LinkSightError::CommandFailed("cannot resolve data directory".into()))
 }
 
+/// Persist host card order on the Hosts page.
+#[tauri::command]
+pub async fn reorder_hosts(
+    ids: Vec<String>,
+    state: State<'_, AppState>,
+) -> Result<(), LinkSightError> {
+    require_db(&state)?.reorder_hosts(&ids).await
+}
+
 /// Verify a host: TCP reachability, then SSH password or public-key auth.
 #[tauri::command]
 pub async fn verify_host(

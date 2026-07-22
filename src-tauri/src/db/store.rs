@@ -73,6 +73,7 @@ impl Db {
             "ALTER TABLE hosts ADD COLUMN auth_mode TEXT NOT NULL DEFAULT 'ssh'",
             "ALTER TABLE hosts ADD COLUMN ssh_private_key_path TEXT",
             "ALTER TABLE hosts ADD COLUMN ssh_public_key TEXT",
+            "ALTER TABLE hosts ADD COLUMN sort_order INTEGER NOT NULL DEFAULT 0",
         ] {
             let _ = sqlx::query(sql).execute(&self.pool).await;
         }
@@ -169,7 +170,7 @@ impl Db {
             "SELECT id, alias, hostname, username, ip, password, port, \
              COALESCE(auth_mode, 'ssh') AS auth_mode, \
              ssh_private_key_path, ssh_public_key, created_at, updated_at \
-             FROM hosts ORDER BY alias COLLATE NOCASE",
+             FROM hosts ORDER BY COALESCE(sort_order, 0) ASC, alias COLLATE NOCASE",
         )
         .fetch_all(&self.pool)
         .await
@@ -204,11 +205,18 @@ impl Db {
     }
 
     pub async fn insert_host(&self, host: &HostRecord) -> Result<()> {
+        let next_order: i64 = sqlx::query_scalar(
+            "SELECT COALESCE(MAX(sort_order), -1) + 1 FROM hosts",
+        )
+        .fetch_one(&self.pool)
+        .await
+        .unwrap_or(0);
+
         sqlx::query(
             "INSERT INTO hosts \
              (id, alias, hostname, username, ip, password, port, auth_mode, \
-              ssh_private_key_path, ssh_public_key) \
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+              ssh_private_key_path, ssh_public_key, sort_order) \
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         )
         .bind(host.id.as_str())
         .bind(host.alias.as_str())
@@ -220,6 +228,7 @@ impl Db {
         .bind(host.auth_mode.as_str())
         .bind(host.ssh_private_key_path.as_deref())
         .bind(host.ssh_public_key.as_deref())
+        .bind(next_order)
         .execute(&self.pool)
         .await
         .map_err(|e| LinkSightError::CommandFailed(e.to_string()))?;
@@ -252,6 +261,27 @@ impl Db {
         sqlx::query("DELETE FROM hosts WHERE id = ?")
             .bind(id)
             .execute(&self.pool)
+            .await
+            .map_err(|e| LinkSightError::CommandFailed(e.to_string()))?;
+        Ok(())
+    }
+
+    /// Persist display order. `ids` is the full ordered list of host ids.
+    pub async fn reorder_hosts(&self, ids: &[String]) -> Result<()> {
+        let mut tx = self
+            .pool
+            .begin()
+            .await
+            .map_err(|e| LinkSightError::CommandFailed(e.to_string()))?;
+        for (index, id) in ids.iter().enumerate() {
+            sqlx::query("UPDATE hosts SET sort_order = ? WHERE id = ?")
+                .bind(index as i64)
+                .bind(id.as_str())
+                .execute(&mut *tx)
+                .await
+                .map_err(|e| LinkSightError::CommandFailed(e.to_string()))?;
+        }
+        tx.commit()
             .await
             .map_err(|e| LinkSightError::CommandFailed(e.to_string()))?;
         Ok(())
