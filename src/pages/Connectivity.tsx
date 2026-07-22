@@ -1,20 +1,8 @@
-import { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
-import {
-  Monitor,
-  Server,
-  ArrowLeftRight,
-  Plus,
-  Activity,
-  SlidersHorizontal,
-  Loader2,
-  CheckCircle2,
-  XCircle,
-} from "lucide-react";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { HostCircle } from "@/features/network/HostCircle";
 import { HostPicker } from "@/features/network/HostPicker";
 import { StatusIndicator } from "@/features/network/StatusIndicator";
+import { TestRunStopButton } from "@/features/network/TestRunStopButton";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { useHostStore } from "@/store/useHostStore";
@@ -30,6 +18,19 @@ import {
   connectivityMetricValues,
 } from "@/features/connectivity/ConnectivityMetrics";
 import { SettingsDialog } from "@/features/settings/SettingsDialogs";
+import {
+  Monitor,
+  Server,
+  ArrowLeftRight,
+  Plus,
+  Activity,
+  SlidersHorizontal,
+  Loader2,
+  CheckCircle2,
+  XCircle,
+} from "lucide-react";
+import { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 
 function hostEndpoint(h: HostRecord): string {
   const port = h.port != null && h.port > 0 ? `:${h.port}` : "";
@@ -42,7 +43,7 @@ export function Connectivity() {
   const verifyStatus = useHomeStore((s) => s.verifyStatus);
   const verifyResult = useHomeStore((s) => s.verifyResult);
   const hostsLoad = useHostStore((s) => s.load);
-  const { execute, status, progress, result, hostId } = useConnectivity();
+  const { execute, cancel, status, progress, result, hostId } = useConnectivity();
   const selectAndVerify = useHostSelection();
   const [showSettings, setShowSettings] = useState(false);
   const [pickerOpen, setPickerOpen] = useState(false);
@@ -98,16 +99,20 @@ export function Connectivity() {
         <CardContent className="relative px-4 py-5 sm:px-6">
           {selectedHost && (
             <div className="absolute left-4 top-4 z-10 flex flex-col items-start gap-2 sm:left-5 sm:top-5">
-              <Button
-                size="sm"
-                disabled={running || !isTauri() || !verified}
-                onClick={() => execute(selectedHost)}
-              >
-                <Activity className="h-4 w-4" />
-                {resultForHost
-                  ? t("connectivity.actions.runAgain")
-                  : t("connectivity.actions.runTest")}
-              </Button>
+              <TestRunStopButton
+                running={running}
+                runIcon={Activity}
+                runLabel={
+                  resultForHost
+                    ? t("connectivity.actions.runAgain")
+                    : t("connectivity.actions.runTest")
+                }
+                stopLabel={t("common.stop")}
+                disabled={!isTauri() || !verified}
+                onRun={() => void execute(selectedHost)}
+                onStop={() => void cancel()}
+                minWidthClass="min-w-[12.5rem]"
+              />
               {verifyStatus === "verifying" && (
                 <span className="flex items-center gap-1.5 text-xs text-primary">
                   <Loader2 className="h-3.5 w-3.5 animate-spin" />

@@ -1,8 +1,13 @@
-import { useCallback } from "react";
-import { runConnectivityTest } from "@/lib/api";
+import { useCallback, useRef } from "react";
+import { cancelNetworkTest, runConnectivityTest } from "@/lib/api";
 import { useConnectivityStore } from "@/store/useConnectivityStore";
 import { currentConnectivitySettings } from "@/store/useConnectivitySettingsStore";
 import type { HostRecord } from "@/lib/types";
+
+function isCancelError(err: unknown): boolean {
+  const msg = err instanceof Error ? err.message : String(err);
+  return msg.toLowerCase().includes("cancelled");
+}
 
 /**
  * Drives a comprehensive connectivity test against a saved host through staged,
@@ -20,9 +25,22 @@ export function useConnectivity() {
   const setProgress = useConnectivityStore((s) => s.setProgress);
   const setResult = useConnectivityStore((s) => s.setResult);
   const setHostId = useConnectivityStore((s) => s.setHostId);
+  const runIdRef = useRef(0);
+
+  const cancel = useCallback(async (): Promise<void> => {
+    runIdRef.current += 1;
+    try {
+      await cancelNetworkTest("connectivity");
+    } catch {
+      /* best-effort */
+    }
+    setStatus("idle");
+    setProgress(null);
+  }, [setStatus, setProgress]);
 
   const execute = useCallback(
     async (host: HostRecord): Promise<void> => {
+      const runId = ++runIdRef.current;
       setHostId(host.id);
       setStatus("running");
       setResult(null);
@@ -38,12 +56,22 @@ export function useConnectivity() {
             sshPrivateKeyPath: host.sshPrivateKeyPath,
             settings: currentConnectivitySettings(),
           },
-          (p) => setProgress(p),
+          (p) => {
+            if (runIdRef.current === runId) setProgress(p);
+          },
         );
+        if (runIdRef.current !== runId) return;
         setResult(r);
         setStatus(r.status);
         setProgress(null);
       } catch (err) {
+        if (runIdRef.current !== runId || isCancelError(err)) {
+          if (runIdRef.current === runId) {
+            setStatus("idle");
+            setProgress(null);
+          }
+          return;
+        }
         setResult({
           id: crypto.randomUUID(),
           kind: "iperf",
@@ -75,5 +103,5 @@ export function useConnectivity() {
     [setHostId, setStatus, setProgress, setResult],
   );
 
-  return { execute, status, progress, result, hostId };
+  return { execute, cancel, status, progress, result, hostId };
 }

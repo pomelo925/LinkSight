@@ -12,6 +12,7 @@ use std::time::Instant;
 use serde::{Deserialize, Serialize};
 use tokio::process::Command;
 
+use super::cancel::{self, CancelKind};
 use super::model::{TestKind, TestMode, TestStatus};
 use crate::error::{LinkSightError, Result};
 
@@ -45,28 +46,43 @@ pub struct ScanResult {
 
 /// Discover devices on `cidr` (e.g. `192.168.1.0/24`). Empty = auto-detect.
 pub async fn scan(cidr: &str) -> Result<ScanResult> {
+    let gen = cancel::begin(CancelKind::Scan);
     let target = if cidr.trim().is_empty() {
         detect_local_cidr().await?
     } else {
         cidr.trim().to_string()
     };
     validate_target(&target)?;
+    cancel::ensure(CancelKind::Scan, gen)?;
 
     let id = uuid::Uuid::new_v4().to_string();
     let started_at = chrono::Utc::now().to_rfc3339();
     let start = Instant::now();
 
     let (devices, raw, status, error) = match run_nmap(&target).await {
-        Ok((devices, raw)) => (devices, Some(raw), TestStatus::Success, None),
+        Ok((devices, raw)) => {
+            if cancel::is_cancelled(CancelKind::Scan, gen) {
+                return Err(cancel::cancelled_error());
+            }
+            (devices, Some(raw), TestStatus::Success, None)
+        }
         // nmap missing -> fall back to a ping sweep.
         Err(LinkSightError::CommandFailed(msg)) if msg.contains("nmap not found") => {
+            cancel::ensure(CancelKind::Scan, gen)?;
             match ping_sweep(&target).await {
-                Ok(devices) => (devices, None, TestStatus::Success, None),
+                Ok(devices) => {
+                    if cancel::is_cancelled(CancelKind::Scan, gen) {
+                        return Err(cancel::cancelled_error());
+                    }
+                    (devices, None, TestStatus::Success, None)
+                }
                 Err(e) => (Vec::new(), None, TestStatus::Failed, Some(e.to_string())),
             }
         }
         Err(e) => (Vec::new(), None, TestStatus::Failed, Some(e.to_string())),
     };
+
+    cancel::ensure(CancelKind::Scan, gen)?;
 
     Ok(ScanResult {
         id,

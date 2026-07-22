@@ -1,8 +1,13 @@
-import { useCallback } from "react";
-import { runScan } from "@/lib/api";
+import { useCallback, useRef } from "react";
+import { cancelNetworkTest, runScan } from "@/lib/api";
 import { useScanStore } from "@/store/useScanStore";
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+function isCancelError(err: unknown): boolean {
+  const msg = err instanceof Error ? err.message : String(err);
+  return msg.toLowerCase().includes("cancelled");
+}
 
 /**
  * Drives a LAN scan through the standard flow:
@@ -18,19 +23,37 @@ export function useScan() {
   const setStatus = useScanStore((s) => s.setStatus);
   const setResult = useScanStore((s) => s.setResult);
   const setLastCidr = useScanStore((s) => s.setLastCidr);
+  const runIdRef = useRef(0);
+
+  const cancel = useCallback(async (): Promise<void> => {
+    runIdRef.current += 1;
+    try {
+      await cancelNetworkTest("scan");
+    } catch {
+      /* best-effort */
+    }
+    setStatus("idle");
+  }, [setStatus]);
 
   const execute = useCallback(
     async (cidr: string): Promise<void> => {
+      const runId = ++runIdRef.current;
       setLastCidr(cidr);
       setStatus("running");
       // Keep the previous result on screen until the new scan finishes.
       try {
         const r = await runScan(cidr);
+        if (runIdRef.current !== runId) return;
         setStatus("analyzing");
         await sleep(300);
+        if (runIdRef.current !== runId) return;
         setResult(r);
         setStatus(r.status);
       } catch (err) {
+        if (runIdRef.current !== runId || isCancelError(err)) {
+          if (runIdRef.current === runId) setStatus("idle");
+          return;
+        }
         setResult({
           id: crypto.randomUUID(),
           kind: "scan",
@@ -54,5 +77,5 @@ export function useScan() {
     await execute(cidr);
   }, [execute]);
 
-  return { execute, refresh, status, result, lastCidr };
+  return { execute, cancel, refresh, status, result, lastCidr };
 }

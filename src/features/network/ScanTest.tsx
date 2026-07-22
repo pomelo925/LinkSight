@@ -8,6 +8,7 @@ import { useI18n } from "@/hooks/useI18n";
 import { formatMs, cn } from "@/lib/utils";
 import type { DiscoveredDevice, ScanResult, TestStatus } from "@/lib/types";
 import { StatusIndicator } from "./StatusIndicator";
+import { TestRunStopButton } from "./TestRunStopButton";
 
 /** Columns can shrink below content width so `truncate` ellipsis works. */
 const SCAN_GRID =
@@ -32,10 +33,12 @@ function ScanForm({
   status,
   initialCidr,
   onSubmit,
+  onStop,
 }: {
   status: TestStatus;
   initialCidr: string;
   onSubmit: (cidr: string) => void;
+  onStop: () => void;
 }) {
   const { t } = useI18n();
   const [cidr, setCidr] = useState(initialCidr);
@@ -52,15 +55,22 @@ function ScanForm({
           <form
             onSubmit={(e) => {
               e.preventDefault();
+              if (busy) return;
               onSubmit(cidr.trim());
             }}
             className="flex min-w-0 flex-1 items-stretch gap-3"
           >
             <div className="flex shrink-0 self-stretch">
-              <Button type="submit" disabled={busy} className="h-full px-4">
-                <Radar className="h-4 w-4" />
-                {busy ? t("scan.form.scanning") : t("scan.form.scan")}
-              </Button>
+              <TestRunStopButton
+                running={busy}
+                runIcon={Radar}
+                runLabel={t("scan.form.scan")}
+                stopLabel={t("common.stop")}
+                onRun={() => onSubmit(cidr.trim())}
+                onStop={onStop}
+                className="h-full px-4"
+                minWidthClass="min-w-[7.5rem]"
+              />
             </div>
             <div className="min-w-0 flex-1 space-y-1.5">
               <label className="text-xs font-medium text-muted-foreground">
@@ -206,12 +216,17 @@ const ScanResults = memo(function ScanResults({
 });
 
 export function ScanTest() {
-  const { execute, refresh, status, result, lastCidr } = useScan();
+  const { execute, cancel, refresh, status, result, lastCidr } = useScan();
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-hidden">
       <div className="shrink-0">
-        <ScanForm status={status} initialCidr={lastCidr} onSubmit={execute} />
+        <ScanForm
+          status={status}
+          initialCidr={lastCidr}
+          onSubmit={execute}
+          onStop={() => void cancel()}
+        />
       </div>
       <ScanResults
         result={result}

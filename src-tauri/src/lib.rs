@@ -89,6 +89,7 @@ pub fn run() {
             commands::run_scan,
             commands::run_traceroute,
             commands::run_speedtest,
+            commands::cancel_network_test,
             commands::run_connectivity_test,
             commands::local_list_dir,
             commands::local_mkdir,

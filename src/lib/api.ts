@@ -68,6 +68,13 @@ export function runSpeedtest(
   });
 }
 
+/** Cancel an in-flight network test. */
+export function cancelNetworkTest(
+  kind: "speedtest" | "connectivity" | "scan" | "traceroute",
+): Promise<void> {
+  return tauriInvoke<void>("cancel_network_test", { kind });
+}
+
 /**
  * Advanced Mode: comprehensive connectivity test against a saved host over SSH
  * (RTT/jitter/loss, path MTU, hops, iperf3 up/down throughput, BDP).

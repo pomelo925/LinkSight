@@ -6,6 +6,7 @@ commands.allow = [
     "run_scan",
     "run_traceroute",
     "run_speedtest",
+    "cancel_network_test",
     "run_connectivity_test",
     "local_list_dir",
     "local_mkdir",

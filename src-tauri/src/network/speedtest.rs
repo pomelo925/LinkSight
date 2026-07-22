@@ -13,6 +13,7 @@ use futures_util::StreamExt;
 use serde::{Deserialize, Serialize};
 use tauri::ipc::Channel;
 
+use super::cancel::{self, CancelKind};
 use super::model::{TestKind, TestMode, TestStatus};
 use crate::error::{LinkSightError, Result};
 
@@ -279,6 +280,7 @@ fn best_throughput_mbps(stages: &[SpeedStageResult]) -> Option<f64> {
 }
 
 pub async fn speedtest(on_progress: Channel<SpeedtestProgress>) -> Result<SpeedtestResult> {
+    let gen = cancel::begin(CancelKind::Speedtest);
     let id = uuid::Uuid::new_v4().to_string();
     let started_at = chrono::Utc::now().to_rfc3339();
     let start = Instant::now();
@@ -311,21 +313,25 @@ pub async fn speedtest(on_progress: Channel<SpeedtestProgress>) -> Result<Speedt
 
     // ---- Latency + jitter (download & upload directions) -------------------
     emit(&on_progress, SpeedtestProgress::phase("latency", 0.0));
-    match measure_download_latency(&client, &on_progress).await {
+    match measure_download_latency(&client, &on_progress, gen).await {
         Ok((avg, jitter)) => {
             result.download_latency_ms = Some(avg);
             result.download_jitter_ms = Some(jitter);
         }
+        Err(e) if cancel::is_cancel_error(&e) => return Err(e),
         Err(e) => tracing::warn!("download latency failed: {e}"),
     }
+    cancel::ensure(CancelKind::Speedtest, gen)?;
 
-    match measure_upload_latency(&client, &on_progress).await {
+    match measure_upload_latency(&client, &on_progress, gen).await {
         Ok((avg, jitter)) => {
             result.upload_latency_ms = Some(avg);
             result.upload_jitter_ms = Some(jitter);
         }
+        Err(e) if cancel::is_cancel_error(&e) => return Err(e),
         Err(e) => tracing::warn!("upload latency failed: {e}"),
     }
+    cancel::ensure(CancelKind::Speedtest, gen)?;
 
     let dl_lat = result.download_latency_ms;
     let ul_lat = result.upload_latency_ms;
@@ -351,11 +357,12 @@ pub async fn speedtest(on_progress: Channel<SpeedtestProgress>) -> Result<Speedt
     emit(&on_progress, latency_done);
 
     // ---- Download (staged) -------------------------------------------------
-    match run_bandwidth_phase(&client, &on_progress, BandwidthDirection::Download).await {
+    match run_bandwidth_phase(&client, &on_progress, BandwidthDirection::Download, gen).await {
         Ok((mbps, stages)) => {
             result.download_mbps = Some(mbps);
             result.download_stages = stages;
         }
+        Err(e) if cancel::is_cancel_error(&e) => return Err(e),
         Err(e) => {
             result.status = TestStatus::Failed;
             result.error = Some(format!("download failed: {e}"));
@@ -364,13 +371,15 @@ pub async fn speedtest(on_progress: Channel<SpeedtestProgress>) -> Result<Speedt
             return Ok(result);
         }
     }
+    cancel::ensure(CancelKind::Speedtest, gen)?;
 
     // ---- Upload (staged) ---------------------------------------------------
-    match run_bandwidth_phase(&client, &on_progress, BandwidthDirection::Upload).await {
+    match run_bandwidth_phase(&client, &on_progress, BandwidthDirection::Upload, gen).await {
         Ok((mbps, stages)) => {
             result.upload_mbps = Some(mbps);
             result.upload_stages = stages;
         }
+        Err(e) if cancel::is_cancel_error(&e) => return Err(e),
         Err(e) => tracing::warn!("upload measurement failed: {e}"),
     }
 
@@ -394,9 +403,11 @@ pub async fn speedtest(on_progress: Channel<SpeedtestProgress>) -> Result<Speedt
 async fn measure_download_latency(
     client: &reqwest::Client,
     ch: &Channel<SpeedtestProgress>,
+    gen: u64,
 ) -> Result<(f64, f64)> {
     let mut samples = Vec::with_capacity(LATENCY_SAMPLES);
     for i in 0..LATENCY_SAMPLES {
+        cancel::ensure(CancelKind::Speedtest, gen)?;
         let t = Instant::now();
         let resp = client
             .get(format!("{DOWN_URL}?bytes=0"))
@@ -423,9 +434,11 @@ async fn measure_download_latency(
 async fn measure_upload_latency(
     client: &reqwest::Client,
     ch: &Channel<SpeedtestProgress>,
+    gen: u64,
 ) -> Result<(f64, f64)> {
     let mut samples = Vec::with_capacity(LATENCY_SAMPLES);
     for i in 0..LATENCY_SAMPLES {
+        cancel::ensure(CancelKind::Speedtest, gen)?;
         let t = Instant::now();
         let resp = client
             .post(UP_URL)
@@ -477,7 +490,11 @@ fn transfer_result(bytes: usize, duration_ms: f64) -> TransferResult {
 }
 
 /// One full download of `size` bytes; timed from first payload byte received.
-async fn measure_download_once(client: &reqwest::Client, size: usize) -> Result<TransferResult> {
+async fn measure_download_once(
+    client: &reqwest::Client,
+    size: usize,
+    gen: u64,
+) -> Result<TransferResult> {
     let resp = client
         .get(format!("{DOWN_URL}?bytes={size}"))
         .send()
@@ -489,6 +506,7 @@ async fn measure_download_once(client: &reqwest::Client, size: usize) -> Result<
     let mut received = 0usize;
 
     while let Some(chunk) = stream.next().await {
+        cancel::ensure(CancelKind::Speedtest, gen)?;
         let chunk = chunk.map_err(|e| LinkSightError::CommandFailed(e.to_string()))?;
         if !chunk.is_empty() && transfer_start.is_none() {
             transfer_start = Some(Instant::now());
@@ -573,9 +591,11 @@ async fn measure_transfer(
     client: &reqwest::Client,
     direction: BandwidthDirection,
     size: usize,
+    gen: u64,
 ) -> Result<TransferResult> {
+    cancel::ensure(CancelKind::Speedtest, gen)?;
     match direction {
-        BandwidthDirection::Download => measure_download_once(client, size).await,
+        BandwidthDirection::Download => measure_download_once(client, size, gen).await,
         BandwidthDirection::Upload => measure_upload_once(client, size).await,
     }
 }
@@ -584,9 +604,10 @@ async fn run_bandwidth_phase(
     client: &reqwest::Client,
     ch: &Channel<SpeedtestProgress>,
     direction: BandwidthDirection,
+    gen: u64,
 ) -> Result<(f64, Vec<SpeedStageResult>)> {
     emit(ch, SpeedtestProgress::phase(direction.label(), 0.0));
-    let (mbps, stages) = measure_bandwidth_staged(client, ch, direction).await?;
+    let (mbps, stages) = measure_bandwidth_staged(client, ch, direction, gen).await?;
     let mut done = SpeedtestProgress::phase(direction.label(), 1.0);
     match direction {
         BandwidthDirection::Download => done.download_mbps = Some(mbps),
@@ -600,6 +621,7 @@ async fn measure_bandwidth_staged(
     client: &reqwest::Client,
     ch: &Channel<SpeedtestProgress>,
     direction: BandwidthDirection,
+    gen: u64,
 ) -> Result<(f64, Vec<SpeedStageResult>)> {
     let profile = direction.profile();
     let stages = profile.stages;
@@ -615,7 +637,7 @@ async fn measure_bandwidth_staged(
         let mut saturated = false;
 
         for sample_idx in 0..target_reps {
-            let transfer = measure_transfer(client, direction, size).await?;
+            let transfer = measure_transfer(client, direction, size, gen).await?;
             bytes_done += size as u64;
 
             if transfer.mbps > 0.0 {

@@ -92,6 +92,18 @@ pub async fn run_speedtest(
     speedtest::speedtest(on_progress).await
 }
 
+/// Cancel an in-flight network test (`speedtest` | `connectivity` | `scan` | `traceroute`).
+#[tauri::command]
+pub fn cancel_network_test(kind: String) -> Result<(), LinkSightError> {
+    let Some(k) = crate::network::cancel::CancelKind::parse(&kind) else {
+        return Err(LinkSightError::InvalidInput(format!(
+            "unknown cancel kind: {kind}"
+        )));
+    };
+    crate::network::cancel::request(k);
+    Ok(())
+}
+
 /// Connectivity test (Advanced Mode) — comprehensive local ↔ remote-host
 /// diagnostics (RTT, jitter, loss, path MTU, hops, iperf3 throughput, BDP).
 ///

@@ -17,6 +17,9 @@ pub enum LinkSightError {
     #[error("not implemented: {0}")]
     NotImplemented(String),
 
+    #[error("cancelled")]
+    Cancelled,
+
     #[error("io error: {0}")]
     Io(#[from] std::io::Error),
 }

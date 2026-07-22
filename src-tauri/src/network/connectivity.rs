@@ -18,6 +18,7 @@ use serde_json::Value;
 use tauri::ipc::Channel;
 use tokio::process::Command;
 
+use super::cancel::{self, CancelKind};
 use super::model::{TestKind, TestMode, TestStatus};
 use super::{ping, traceroute};
 use crate::error::{LinkSightError, Result};
@@ -208,6 +209,7 @@ pub async fn connectivity_test(
         return Err(LinkSightError::InvalidInput("username is required".into()));
     }
 
+    let gen = cancel::begin(CancelKind::Connectivity);
     let cfg = settings.resolve();
     let ip = ip.trim().to_string();
     let ssh_port = effective_port(ssh_port, DEFAULT_SSH_PORT);
@@ -251,6 +253,7 @@ pub async fn connectivity_test(
 
     // ---- Handshake: TCP connect time to the SSH port ----------------------
     if cfg.enable_handshake {
+        cancel::ensure(CancelKind::Connectivity, gen)?;
         emit(&on_progress, ConnectivityProgress::phase("handshake", 0.0));
         if let Some(ms) = measure_handshake(&target.addr).await {
             result.handshake_ms = Some(ms);
@@ -262,6 +265,7 @@ pub async fn connectivity_test(
 
     // ---- Ping: RTT / delay / jitter / packet loss -------------------------
     if cfg.enable_ping {
+        cancel::ensure(CancelKind::Connectivity, gen)?;
         emit(&on_progress, ConnectivityProgress::phase("ping", 0.0));
         match ping::ping(&ip, cfg.ping_count).await {
             Ok(r) => {
@@ -287,6 +291,7 @@ pub async fn connectivity_test(
 
     // ---- Path MTU / max payload (DF binary search) ------------------------
     if cfg.enable_mtu {
+        cancel::ensure(CancelKind::Connectivity, gen)?;
         emit(&on_progress, ConnectivityProgress::phase("mtu", 0.0));
         if let Some(payload) = measure_max_payload(&ip).await {
             result.max_payload_bytes = Some(payload);
@@ -302,6 +307,7 @@ pub async fn connectivity_test(
 
     // ---- Traceroute: hop count --------------------------------------------
     if cfg.enable_traceroute {
+        cancel::ensure(CancelKind::Connectivity, gen)?;
         emit(&on_progress, ConnectivityProgress::phase("traceroute", 0.0));
         match traceroute::traceroute(&ip, cfg.traceroute_max_hops).await {
             Ok(tr) => result.hops = Some(tr.hops.len() as u32),
@@ -318,6 +324,7 @@ pub async fn connectivity_test(
             Ok(()) => {
                 // Uplink: local client sends → remote receives.
                 if cfg.run_uplink {
+                    cancel::ensure(CancelKind::Connectivity, gen)?;
                     emit(&on_progress, ConnectivityProgress::phase("uplink", 0.0));
                     match measure_iperf(&target, &ip, iperf_port, duration, false, &cfg).await {
                         Ok(mbps) => result.uplink_mbps = Some(mbps),
@@ -330,6 +337,7 @@ pub async fn connectivity_test(
 
                 // Downlink: reverse mode — remote sends → local receives.
                 if cfg.run_downlink {
+                    cancel::ensure(CancelKind::Connectivity, gen)?;
                     emit(&on_progress, ConnectivityProgress::phase("downlink", 0.0));
                     match measure_iperf(&target, &ip, iperf_port, duration, true, &cfg).await {
                         Ok(mbps) => result.downlink_mbps = Some(mbps),

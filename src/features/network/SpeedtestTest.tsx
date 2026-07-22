@@ -15,6 +15,7 @@ import type {
   SpeedtestResult,
 } from "@/lib/types";
 import { StatusIndicator } from "./StatusIndicator";
+import { TestRunStopButton } from "./TestRunStopButton";
 import { TracerouteResults } from "./TracerouteResults";
 import { SettingsDialog } from "@/features/settings/SettingsDialogs";
 
@@ -219,19 +220,26 @@ export function speedMetricValues(
 function SpeedtestToolbar({
   busy,
   onRun,
+  onStop,
   onOpenSettings,
 }: {
   busy: boolean;
   onRun: () => void;
+  onStop: () => void;
   onOpenSettings: () => void;
 }) {
   const { t } = useI18n();
   return (
     <div className="flex items-center justify-start gap-3">
-      <Button size="sm" onClick={onRun} disabled={busy}>
-        <Gauge className="h-4 w-4" />
-        {busy ? t("speedtest.form.testing") : t("speedtest.form.run")}
-      </Button>
+      <TestRunStopButton
+        running={busy}
+        runIcon={Gauge}
+        runLabel={t("speedtest.form.run")}
+        stopLabel={t("common.stop")}
+        onRun={onRun}
+        onStop={onStop}
+        minWidthClass="min-w-[12.5rem]"
+      />
       <Button
         size="sm"
         variant="ghost"
@@ -239,7 +247,6 @@ function SpeedtestToolbar({
         onClick={onOpenSettings}
       >
         <SlidersHorizontal className="h-4 w-4" />
-        {t("common.settings")}
       </Button>
     </div>
   );
@@ -250,13 +257,14 @@ export function SpeedtestTest() {
   const location = useLocation();
   const navigate = useNavigate();
   const [showSettings, setShowSettings] = useState(false);
-  const { execute, status, progress, result } = useSpeedtest();
+  const { execute, cancel, status, progress, result } = useSpeedtest();
   const running = status === "running" || status === "analyzing";
   const failed = !running && result?.status === "failed";
   const autoStartedRef = useRef(false);
 
   const {
     execute: runTrace,
+    cancel: cancelTrace,
     status: traceStatus,
     result: traceResult,
   } = useTraceroute();
@@ -269,6 +277,11 @@ export function SpeedtestTest() {
     void execute();
     void runTrace(traceHost, traceMaxHops);
   }, [execute, runTrace, traceHost, traceMaxHops]);
+
+  const stopInternetTest = useCallback(() => {
+    void cancel();
+    void cancelTrace();
+  }, [cancel, cancelTrace]);
 
   // Home → Internet Test with autoRun: start speedtest + traceroute once.
   useEffect(() => {
@@ -290,6 +303,7 @@ export function SpeedtestTest() {
               <SpeedtestToolbar
                 busy={running || tracing}
                 onRun={startInternetTest}
+                onStop={stopInternetTest}
                 onOpenSettings={() => setShowSettings(true)}
               />
               <StatusIndicator status={status} />

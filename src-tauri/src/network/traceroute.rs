@@ -8,6 +8,7 @@ use std::time::Instant;
 use serde::{Deserialize, Serialize};
 use tokio::process::Command;
 
+use super::cancel::{self, CancelKind};
 use super::model::{TestKind, TestMode, TestStatus};
 use crate::error::{LinkSightError, Result};
 
@@ -41,6 +42,7 @@ pub struct TracerouteResult {
 
 /// Run `traceroute` to `host` with up to `max_hops` hops.
 pub async fn traceroute(host: &str, max_hops: u32) -> Result<TracerouteResult> {
+    let gen = cancel::begin(CancelKind::Traceroute);
     validate_host(host)?;
     let max_hops = if max_hops == 0 { 30 } else { max_hops.min(64) };
 
@@ -59,6 +61,8 @@ pub async fn traceroute(host: &str, max_hops: u32) -> Result<TracerouteResult> {
         .arg(host)
         .output()
         .await;
+
+    cancel::ensure(CancelKind::Traceroute, gen)?;
 
     let output = match output {
         Ok(o) => o,

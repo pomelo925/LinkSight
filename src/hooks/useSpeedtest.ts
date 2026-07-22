@@ -1,6 +1,11 @@
-import { useCallback } from "react";
-import { runSpeedtest } from "@/lib/api";
+import { useCallback, useRef } from "react";
+import { cancelNetworkTest, runSpeedtest } from "@/lib/api";
 import { useSpeedtestStore } from "@/store/useSpeedtestStore";
+
+function isCancelError(err: unknown): boolean {
+  const msg = err instanceof Error ? err.message : String(err);
+  return msg.toLowerCase().includes("cancelled");
+}
 
 /**
  * Drives an internet speed test through staged, real-time progress:
@@ -16,8 +21,21 @@ export function useSpeedtest() {
   const setStatus = useSpeedtestStore((s) => s.setStatus);
   const setProgress = useSpeedtestStore((s) => s.setProgress);
   const setResult = useSpeedtestStore((s) => s.setResult);
+  const runIdRef = useRef(0);
+
+  const cancel = useCallback(async (): Promise<void> => {
+    runIdRef.current += 1;
+    try {
+      await cancelNetworkTest("speedtest");
+    } catch {
+      /* best-effort */
+    }
+    setStatus("idle");
+    setProgress(null);
+  }, [setStatus, setProgress]);
 
   const execute = useCallback(async (): Promise<void> => {
+    const runId = ++runIdRef.current;
     setStatus("running");
     setResult(null);
     setProgress({
@@ -33,7 +51,10 @@ export function useSpeedtest() {
       uploadJitterMs: null,
     });
     try {
-      const r = await runSpeedtest((p) => setProgress(p));
+      const r = await runSpeedtest((p) => {
+        if (runIdRef.current === runId) setProgress(p);
+      });
+      if (runIdRef.current !== runId) return;
       const live = useSpeedtestStore.getState().progress;
       const bestMbps = (
         final: number | null | undefined,
@@ -53,6 +74,13 @@ export function useSpeedtest() {
       setStatus(patched.status);
       setProgress(null);
     } catch (err) {
+      if (runIdRef.current !== runId || isCancelError(err)) {
+        if (runIdRef.current === runId) {
+          setStatus("idle");
+          setProgress(null);
+        }
+        return;
+      }
       setResult({
         id: crypto.randomUUID(),
         kind: "speedtest",
@@ -78,5 +106,5 @@ export function useSpeedtest() {
     }
   }, [setStatus, setProgress, setResult]);
 
-  return { execute, status, progress, result };
+  return { execute, cancel, status, progress, result };
 }
