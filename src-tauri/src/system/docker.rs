@@ -1,12 +1,19 @@
-//! Local Docker introspection via the `docker` CLI (images, containers, disk usage).
+//! Docker introspection via the `docker` CLI — local or over SSH.
 
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::Path;
 use std::sync::OnceLock;
+use std::time::Duration;
 use tokio::process::Command;
 
 use crate::error::{LinkSightError, Result};
+use crate::ssh::exec::{run_remote_command, SshTarget};
+
+/// Generous timeout for remote docker overview / inspection commands.
+const REMOTE_DOCKER_TIMEOUT: Duration = Duration::from_secs(60);
+/// Timeout for remote docker mutations (stop / restart / rm / tag / rmi).
+const REMOTE_MUTATION_TIMEOUT: Duration = Duration::from_secs(45);
 
 /// A local Docker image summary (`docker images --format '{{json .}}'`).
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -161,27 +168,72 @@ fn docker_bin() -> &'static str {
     .as_str()
 }
 
-async fn docker_output(args: &[&str]) -> Result<String> {
-    let bin = docker_bin();
-    let output = Command::new(bin).args(args).output().await.map_err(|e| {
-        if e.kind() == std::io::ErrorKind::NotFound {
-            LinkSightError::CommandFailed("Docker is not installed or not available in PATH".into())
-        } else {
-            LinkSightError::Io(e)
-        }
-    })?;
+fn shell_escape_single(s: &str) -> String {
+    format!("'{}'", s.replace('\'', "'\\''"))
+}
 
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        let msg = stderr.trim();
-        return Err(LinkSightError::CommandFailed(if msg.is_empty() {
-            format!("docker {} failed (exit {})", args.join(" "), output.status)
-        } else {
-            msg.to_string()
-        }));
+fn docker_remote_command(args: &[&str]) -> String {
+    let mut parts = Vec::with_capacity(args.len() + 1);
+    parts.push("docker".to_string());
+    for arg in args {
+        parts.push(shell_escape_single(arg));
     }
+    parts.join(" ")
+}
 
-    Ok(String::from_utf8_lossy(&output.stdout).into_owned())
+/// Run docker CLI locally, or the same argv remotely over SSH.
+async fn docker_output(args: &[&str], target: Option<&SshTarget>) -> Result<String> {
+    match target {
+        None => {
+            let bin = docker_bin();
+            let output = Command::new(bin).args(args).output().await.map_err(|e| {
+                if e.kind() == std::io::ErrorKind::NotFound {
+                    LinkSightError::CommandFailed(
+                        "Docker is not installed or not available in PATH".into(),
+                    )
+                } else {
+                    LinkSightError::Io(e)
+                }
+            })?;
+
+            if !output.status.success() {
+                let stderr = String::from_utf8_lossy(&output.stderr);
+                let msg = stderr.trim();
+                return Err(LinkSightError::CommandFailed(if msg.is_empty() {
+                    format!("docker {} failed (exit {})", args.join(" "), output.status)
+                } else {
+                    msg.to_string()
+                }));
+            }
+
+            Ok(String::from_utf8_lossy(&output.stdout).into_owned())
+        }
+        Some(target) => {
+            let command = docker_remote_command(args);
+            let timeout = if matches!(
+                args.first().copied(),
+                Some("stop" | "restart" | "rm" | "tag" | "rmi")
+            ) {
+                REMOTE_MUTATION_TIMEOUT
+            } else {
+                REMOTE_DOCKER_TIMEOUT
+            };
+            let output = run_remote_command(target, &command, timeout).await?;
+            if !output.ok() {
+                let msg = output.stderr.trim();
+                return Err(LinkSightError::CommandFailed(if msg.is_empty() {
+                    format!(
+                        "remote docker {} failed (exit {:?})",
+                        args.join(" "),
+                        output.exit_code
+                    )
+                } else {
+                    msg.to_string()
+                }));
+            }
+            Ok(output.stdout)
+        }
+    }
 }
 
 fn parse_json_lines<T, U, F>(stdout: &str, map: F, label: &str) -> Result<Vec<U>>
@@ -202,9 +254,13 @@ where
     Ok(items)
 }
 
-/// List local Docker images.
+/// List Docker images (local).
 pub async fn list_images() -> Result<Vec<DockerImage>> {
-    let stdout = docker_output(&["images", "--format", "{{json .}}"]).await?;
+    list_images_for(None).await
+}
+
+async fn list_images_for(target: Option<&SshTarget>) -> Result<Vec<DockerImage>> {
+    let stdout = docker_output(&["images", "--format", "{{json .}}"], target).await?;
     parse_json_lines(
         &stdout,
         |raw: DockerImageLine| DockerImage {
@@ -219,9 +275,13 @@ pub async fn list_images() -> Result<Vec<DockerImage>> {
     )
 }
 
-/// List all local containers (`docker ps -a`). Stats fields start empty.
+/// List all containers (`docker ps -a`). Stats fields start empty. Local.
 pub async fn list_containers() -> Result<Vec<DockerContainer>> {
-    let stdout = docker_output(&["ps", "-a", "--format", "{{json .}}"]).await?;
+    list_containers_for(None).await
+}
+
+async fn list_containers_for(target: Option<&SshTarget>) -> Result<Vec<DockerContainer>> {
+    let stdout = docker_output(&["ps", "-a", "--format", "{{json .}}"], target).await?;
     parse_json_lines(
         &stdout,
         |raw: DockerContainerLine| DockerContainer {
@@ -245,9 +305,14 @@ pub async fn list_containers() -> Result<Vec<DockerContainer>> {
 /// Live CPU / memory from `docker stats --no-stream --all`.
 ///
 /// Returns a map keyed by short container ID and by name.
-async fn container_stats_map() -> Result<HashMap<String, (String, String)>> {
-    let stdout =
-        docker_output(&["stats", "--no-stream", "--all", "--format", "{{json .}}"]).await?;
+async fn container_stats_map(
+    target: Option<&SshTarget>,
+) -> Result<HashMap<String, (String, String)>> {
+    let stdout = docker_output(
+        &["stats", "--no-stream", "--all", "--format", "{{json .}}"],
+        target,
+    )
+    .await?;
     let lines = parse_json_lines(&stdout, |raw: DockerStatsLine| raw, "docker stats line")?;
 
     let mut map = HashMap::new();
@@ -275,18 +340,36 @@ fn normalize_cpu_perc(raw: &str, host_cpus: u32) -> String {
     format!("{normalized:.2}%")
 }
 
-async fn host_cpu_count() -> u32 {
-    match docker_output(&["info", "--format", "{{.NCPU}}"]).await {
-        Ok(stdout) => stdout
-            .trim()
-            .parse::<u32>()
-            .ok()
-            .filter(|n| *n > 0)
-            .unwrap_or(1),
-        Err(_) => std::thread::available_parallelism()
+async fn host_cpu_count(target: Option<&SshTarget>) -> u32 {
+    match docker_output(&["info", "--format", "{{.NCPU}}"], target).await {
+        Ok(stdout) => {
+            if let Some(n) = stdout
+                .trim()
+                .parse::<u32>()
+                .ok()
+                .filter(|n| *n > 0)
+            {
+                return n;
+            }
+        }
+        Err(_) => {}
+    }
+
+    match target {
+        None => std::thread::available_parallelism()
             .map(|n| n.get() as u32)
             .unwrap_or(1)
             .max(1),
+        Some(t) => match run_remote_command(t, "nproc", REMOTE_DOCKER_TIMEOUT).await {
+            Ok(out) if out.ok() => out
+                .stdout
+                .trim()
+                .parse::<u32>()
+                .ok()
+                .filter(|n| *n > 0)
+                .unwrap_or(1),
+            _ => 1,
+        },
     }
 }
 
@@ -304,9 +387,13 @@ fn apply_stats(
     }
 }
 
-/// Disk usage summary (`docker system df`).
+/// Disk usage summary (`docker system df`). Local.
 pub async fn system_df() -> Result<Vec<DockerDiskUsage>> {
-    let stdout = docker_output(&["system", "df", "--format", "{{json .}}"]).await?;
+    system_df_for(None).await
+}
+
+async fn system_df_for(target: Option<&SshTarget>) -> Result<Vec<DockerDiskUsage>> {
+    let stdout = docker_output(&["system", "df", "--format", "{{json .}}"], target).await?;
     parse_json_lines(
         &stdout,
         |raw: DockerDiskUsageLine| DockerDiskUsage {
@@ -361,8 +448,8 @@ fn parse_docker_size_bytes(raw: &str) -> u64 {
     (value * base.powi(exp)).round() as u64
 }
 
-async fn docker_root_dir() -> String {
-    match docker_output(&["info", "--format", "{{.DockerRootDir}}"]).await {
+async fn docker_root_dir(target: Option<&SshTarget>) -> String {
+    match docker_output(&["info", "--format", "{{.DockerRootDir}}"], target).await {
         Ok(s) => s.trim().to_string(),
         Err(_) => String::new(),
     }
@@ -491,32 +578,23 @@ fn collect_disk_models(dev: &LsblkDevice, out: &mut HashMap<String, String>) {
     }
 }
 
-/// Host disks from `df` Size/Used (summed per physical disk). Docker share uses the
-/// filesystem that contains Docker's root directory.
-async fn list_host_disks(docker_total_bytes: u64, docker_root: &str) -> Vec<HostDiskUsage> {
-    let df = Command::new("df").args(["-B1", "-P"]).output().await;
-    let Ok(df_out) = df else {
-        return Vec::new();
-    };
-    if !df_out.status.success() {
-        return Vec::new();
-    }
-    let entries = parse_df_entries(&String::from_utf8_lossy(&df_out.stdout));
+/// Aggregate host disks from `df` / optional `lsblk` stdout (local or remote).
+fn host_disks_from_stdout(
+    df_stdout: &str,
+    lsblk_stdout: Option<&str>,
+    docker_total_bytes: u64,
+    docker_root: &str,
+) -> Vec<HostDiskUsage> {
+    let entries = parse_df_entries(df_stdout);
     if entries.is_empty() {
         return Vec::new();
     }
 
     let mut models: HashMap<String, String> = HashMap::new();
-    if let Ok(lsblk_out) = Command::new("lsblk")
-        .args(["-J", "-o", "NAME,TYPE,MODEL"])
-        .output()
-        .await
-    {
-        if lsblk_out.status.success() {
-            if let Ok(parsed) = serde_json::from_slice::<LsblkOut>(&lsblk_out.stdout) {
-                for dev in &parsed.blockdevices {
-                    collect_disk_models(dev, &mut models);
-                }
+    if let Some(lsblk) = lsblk_stdout {
+        if let Ok(parsed) = serde_json::from_str::<LsblkOut>(lsblk) {
+            for dev in &parsed.blockdevices {
+                collect_disk_models(dev, &mut models);
             }
         }
     }
@@ -609,22 +687,85 @@ async fn list_host_disks(docker_total_bytes: u64, docker_root: &str) -> Vec<Host
     disks
 }
 
-/// Fetch containers (+ stats), images, and disk usage in one snapshot.
+/// Host disks from `df` Size/Used (summed per physical disk). Docker share uses the
+/// filesystem that contains Docker's root directory.
+async fn list_host_disks(
+    docker_total_bytes: u64,
+    docker_root: &str,
+    target: Option<&SshTarget>,
+) -> Vec<HostDiskUsage> {
+    let (df_stdout, lsblk_stdout) = match target {
+        None => {
+            let df = Command::new("df").args(["-B1", "-P"]).output().await;
+            let Ok(df_out) = df else {
+                return Vec::new();
+            };
+            if !df_out.status.success() {
+                return Vec::new();
+            }
+            let df_stdout = String::from_utf8_lossy(&df_out.stdout).into_owned();
+
+            let lsblk_stdout = match Command::new("lsblk")
+                .args(["-J", "-o", "NAME,TYPE,MODEL"])
+                .output()
+                .await
+            {
+                Ok(lsblk_out) if lsblk_out.status.success() => {
+                    Some(String::from_utf8_lossy(&lsblk_out.stdout).into_owned())
+                }
+                _ => None,
+            };
+            (df_stdout, lsblk_stdout)
+        }
+        Some(t) => {
+            let df = run_remote_command(t, "df -B1 -P", REMOTE_DOCKER_TIMEOUT).await;
+            let Ok(df_out) = df else {
+                return Vec::new();
+            };
+            if !df_out.ok() {
+                return Vec::new();
+            }
+
+            let lsblk_stdout =
+                match run_remote_command(t, "lsblk -J -o NAME,TYPE,MODEL", REMOTE_DOCKER_TIMEOUT)
+                    .await
+                {
+                    Ok(out) if out.ok() => Some(out.stdout),
+                    _ => None,
+                };
+            (df_out.stdout, lsblk_stdout)
+        }
+    };
+
+    host_disks_from_stdout(
+        &df_stdout,
+        lsblk_stdout.as_deref(),
+        docker_total_bytes,
+        docker_root,
+    )
+}
+
+/// Fetch containers (+ stats), images, and disk usage on the local host.
 pub async fn overview() -> Result<DockerOverview> {
+    overview_for(None).await
+}
+
+/// Fetch containers (+ stats), images, and disk usage locally or on a remote SSH host.
+pub async fn overview_for(target: Option<&SshTarget>) -> Result<DockerOverview> {
     let (mut containers, images, disk_usage, stats, host_cpus, docker_root) = tokio::try_join!(
-        list_containers(),
-        list_images(),
-        system_df(),
-        container_stats_map(),
-        async { Ok::<u32, LinkSightError>(host_cpu_count().await) },
-        async { Ok::<String, LinkSightError>(docker_root_dir().await) },
+        list_containers_for(target),
+        list_images_for(target),
+        system_df_for(target),
+        container_stats_map(target),
+        async { Ok::<u32, LinkSightError>(host_cpu_count(target).await) },
+        async { Ok::<String, LinkSightError>(docker_root_dir(target).await) },
     )?;
     apply_stats(&mut containers, &stats, host_cpus);
     let docker_total: u64 = disk_usage
         .iter()
         .map(|r| parse_docker_size_bytes(&r.size))
         .sum();
-    let host_disks = list_host_disks(docker_total, &docker_root).await;
+    let host_disks = list_host_disks(docker_total, &docker_root, target).await;
     Ok(DockerOverview {
         containers,
         images,
@@ -645,23 +786,23 @@ fn validate_ref(value: &str, label: &str) -> Result<()> {
 }
 
 /// `docker stop <id>`
-pub async fn stop_container(id: &str) -> Result<()> {
+pub async fn stop_container(id: &str, target: Option<&SshTarget>) -> Result<()> {
     validate_ref(id, "container id")?;
-    docker_output(&["stop", id.trim()]).await?;
+    docker_output(&["stop", id.trim()], target).await?;
     Ok(())
 }
 
 /// `docker restart <id>`
-pub async fn restart_container(id: &str) -> Result<()> {
+pub async fn restart_container(id: &str, target: Option<&SshTarget>) -> Result<()> {
     validate_ref(id, "container id")?;
-    docker_output(&["restart", id.trim()]).await?;
+    docker_output(&["restart", id.trim()], target).await?;
     Ok(())
 }
 
 /// `docker rm -f <id>`
-pub async fn remove_container(id: &str) -> Result<()> {
+pub async fn remove_container(id: &str, target: Option<&SshTarget>) -> Result<()> {
     validate_ref(id, "container id")?;
-    docker_output(&["rm", "-f", id.trim()]).await?;
+    docker_output(&["rm", "-f", id.trim()], target).await?;
     Ok(())
 }
 
@@ -672,6 +813,7 @@ pub async fn rename_image(
     old_tag: &str,
     repository: &str,
     tag: &str,
+    target: Option<&SshTarget>,
 ) -> Result<()> {
     validate_ref(id, "image id")?;
     let repository = repository.trim();
@@ -697,7 +839,7 @@ pub async fn rename_image(
 
     let new_ref = format!("{repository}:{tag}");
     validate_ref(&new_ref, "image reference")?;
-    docker_output(&["tag", id.trim(), &new_ref]).await?;
+    docker_output(&["tag", id.trim(), &new_ref], target).await?;
 
     let old_repository = old_repository.trim();
     let old_tag = old_tag.trim();
@@ -711,14 +853,14 @@ pub async fn rename_image(
     let old_ref = format!("{old_repository}:{old_tag}");
     if old_ref != new_ref {
         // Best-effort: ignore failures (e.g. dangling / still referenced).
-        let _ = docker_output(&["rmi", &old_ref]).await;
+        let _ = docker_output(&["rmi", &old_ref], target).await;
     }
     Ok(())
 }
 
 /// `docker rmi <id-or-ref>`
-pub async fn remove_image(id_or_ref: &str) -> Result<()> {
+pub async fn remove_image(id_or_ref: &str, target: Option<&SshTarget>) -> Result<()> {
     validate_ref(id_or_ref, "image")?;
-    docker_output(&["rmi", id_or_ref.trim()]).await?;
+    docker_output(&["rmi", id_or_ref.trim()], target).await?;
     Ok(())
 }

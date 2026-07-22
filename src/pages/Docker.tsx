@@ -5,11 +5,13 @@ import {
   Container,
   Diamond,
   Loader2,
+  Monitor,
   MoreVertical,
   Pencil,
   Play,
   RefreshCw,
   RotateCcw,
+  Server,
   Square,
   Trash2,
 } from "lucide-react";
@@ -19,6 +21,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { CenterDialog } from "@/components/ui/center-dialog";
 import { Input } from "@/components/ui/input";
 import { SortHeader } from "@/components/ui/sort-header";
+import { HostCircle } from "@/features/network/HostCircle";
 import {
   dockerRemoveContainer,
   dockerRemoveImage,
@@ -29,12 +32,15 @@ import {
 import { useI18n } from "@/hooks/useI18n";
 import { HOVER_POP_GROUP, HOVER_POP_STATUS } from "@/lib/interactive";
 import { useDockerStore } from "@/store/useDockerStore";
+import { useHostStore } from "@/store/useHostStore";
+import { isTauri } from "@/lib/tauri";
 import { cn } from "@/lib/utils";
 import type {
   DockerContainer,
   DockerDiskUsage,
   DockerImage,
   HostDiskUsage,
+  HostRecord,
 } from "@/lib/types";
 
 /** Image name column: hug longest text up to 20rem, stay as short as possible. */
@@ -1027,6 +1033,174 @@ type ConfirmDialog =
       name: string;
     };
 
+function hostEndpoint(h: HostRecord): string {
+  const port = h.port != null && h.port > 0 ? `:${h.port}` : "";
+  return `${h.username}@${h.ip}${port}`;
+}
+
+function dockerAuthParams(host: HostRecord | null) {
+  if (!host) return null;
+  return {
+    ip: host.ip,
+    port: host.port,
+    username: host.username,
+    authMode: (host.authMode ?? "ssh") as "ssh" | "password",
+    password: host.password,
+    sshPrivateKeyPath: host.sshPrivateKeyPath,
+  };
+}
+
+function DockerHostSelector({
+  selectedHost,
+  onSelectLocal,
+  onSelectHost,
+}: {
+  selectedHost: HostRecord | null;
+  onSelectLocal: () => void;
+  onSelectHost: (host: HostRecord) => void;
+}) {
+  const { t } = useI18n();
+  const hosts = useHostStore((s) => s.hosts);
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const rootRef = useRef<HTMLDivElement>(null);
+  const circleRef = useRef<HTMLDivElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const [menuPos, setMenuPos] = useState({ top: 0, left: 0, width: 0 });
+
+  const updateMenuPos = useCallback(() => {
+    const el = circleRef.current;
+    if (!el) return;
+    const rect = el.getBoundingClientRect();
+    const width = Math.max(rect.width, 16 * 16); // at least 16rem
+    const left = rect.left + rect.width / 2 - width / 2;
+    setMenuPos({
+      top: rect.bottom + 8,
+      left: Math.max(8, Math.min(left, window.innerWidth - width - 8)),
+      width,
+    });
+  }, []);
+
+  useEffect(() => {
+    if (!pickerOpen) return;
+    updateMenuPos();
+    const onPointerDown = (e: MouseEvent) => {
+      const target = e.target as Node;
+      if (rootRef.current?.contains(target) || menuRef.current?.contains(target)) {
+        return;
+      }
+      setPickerOpen(false);
+    };
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setPickerOpen(false);
+    };
+    const onLayout = () => updateMenuPos();
+    window.addEventListener("mousedown", onPointerDown);
+    window.addEventListener("keydown", onKeyDown);
+    window.addEventListener("resize", onLayout);
+    window.addEventListener("scroll", onLayout, true);
+    return () => {
+      window.removeEventListener("mousedown", onPointerDown);
+      window.removeEventListener("keydown", onKeyDown);
+      window.removeEventListener("resize", onLayout);
+      window.removeEventListener("scroll", onLayout, true);
+    };
+  }, [pickerOpen, updateMenuPos]);
+
+  const menu =
+    pickerOpen &&
+    createPortal(
+      <div
+        ref={menuRef}
+        style={{ top: menuPos.top, left: menuPos.left, width: menuPos.width }}
+        className="fixed z-[9999]"
+      >
+        <Card className="shadow-lg">
+          <CardContent className="p-2">
+            <button
+              type="button"
+              onClick={() => {
+                setPickerOpen(false);
+                onSelectLocal();
+              }}
+              className="group flex w-full items-center gap-3 rounded-md px-3 py-2 text-left text-sm hover:bg-accent"
+            >
+              <span className={cn("inline-flex items-center gap-3", HOVER_POP_GROUP)}>
+                <Monitor className="h-4 w-4 shrink-0 text-muted-foreground" />
+                <span className="min-w-0">
+                  <span className="block truncate font-medium">127.0.0.1</span>
+                  <span className="block truncate text-xs text-muted-foreground">
+                    {t("docker.host.localSubtitle")}
+                  </span>
+                </span>
+              </span>
+            </button>
+            {hosts.length === 0 ? (
+              <p className="px-3 py-2 text-center text-xs text-muted-foreground">
+                {t("hostPicker.empty")}
+              </p>
+            ) : (
+              <div className="max-h-48 overflow-y-auto border-t border-border/60">
+                {hosts.map((h) => (
+                  <button
+                    key={h.id}
+                    type="button"
+                    onClick={() => {
+                      setPickerOpen(false);
+                      onSelectHost(h);
+                    }}
+                    className="group flex w-full items-center gap-3 rounded-md px-3 py-2 text-left text-sm hover:bg-accent"
+                  >
+                    <span className={cn("inline-flex items-center gap-3", HOVER_POP_GROUP)}>
+                      <Server className="h-4 w-4 shrink-0 text-muted-foreground" />
+                      <span className="min-w-0">
+                        <span className="block truncate font-medium">{h.alias}</span>
+                        <span className="block truncate text-xs text-muted-foreground">
+                          {hostEndpoint(h)}
+                        </span>
+                      </span>
+                    </span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </div>,
+      document.body,
+    );
+
+  return (
+    <div
+      ref={rootRef}
+      className="relative z-20 flex min-h-0 min-w-0 flex-1 items-center justify-center self-stretch overflow-visible [container-type:size]"
+    >
+      <div
+        ref={circleRef}
+        className="h-[min(100cqw,100cqh)] w-[min(100cqw,100cqh)] shrink-0"
+      >
+        {selectedHost ? (
+          <HostCircle
+            size="fill"
+            icon={Server}
+            title={selectedHost.alias}
+            subtitle={hostEndpoint(selectedHost)}
+            onClick={() => setPickerOpen((v) => !v)}
+          />
+        ) : (
+          <HostCircle
+            size="fill"
+            icon={Monitor}
+            title="127.0.0.1"
+            subtitle={t("docker.host.localSubtitle")}
+            onClick={() => setPickerOpen((v) => !v)}
+          />
+        )}
+      </div>
+      {menu}
+    </div>
+  );
+}
+
 export function Docker() {
   const { t } = useI18n();
   const data = useDockerStore((s) => s.data);
@@ -1034,6 +1208,9 @@ export function Docker() {
   const refreshing = useDockerStore((s) => s.refreshing);
   const error = useDockerStore((s) => s.error);
   const load = useDockerStore((s) => s.load);
+  const selectedHost = useDockerStore((s) => s.selectedHost);
+  const setSelectedHost = useDockerStore((s) => s.setSelectedHost);
+  const hostsLoad = useHostStore((s) => s.load);
   const [actionError, setActionError] = useState<string | null>(null);
   const [busyKey, setBusyKey] = useState<string | null>(null);
   const [confirm, setConfirm] = useState<ConfirmDialog | null>(null);
@@ -1047,10 +1224,15 @@ export function Docker() {
   const [imageSortDir, setImageSortDir] = useState<SortDir>("desc");
 
   useEffect(() => {
-    void load();
-  }, [load]);
+    if (isTauri()) void hostsLoad().catch(() => undefined);
+  }, [hostsLoad]);
+
+  useEffect(() => {
+    void load(selectedHost);
+  }, [load, selectedHost]);
 
   const busy = loading || refreshing;
+  const auth = dockerAuthParams(selectedHost);
 
   const runAction = useCallback(
     async (key: string, action: () => Promise<void>) => {
@@ -1058,7 +1240,7 @@ export function Docker() {
       setActionError(null);
       try {
         await action();
-        await load();
+        await load(selectedHost);
       } catch (err) {
         setActionError(
           t("docker.action.failed", {
@@ -1069,7 +1251,7 @@ export function Docker() {
         setBusyKey(null);
       }
     },
-    [load, t],
+    [load, selectedHost, t],
   );
 
   const toggleContainerSort = (key: ContainerSortKey) => {
@@ -1225,16 +1407,16 @@ export function Docker() {
     setConfirm(null);
     switch (pending.kind) {
       case "stop":
-        void runAction(pending.id, () => dockerStopContainer(pending.id));
+        void runAction(pending.id, () => dockerStopContainer(pending.id, auth));
         break;
       case "restart":
-        void runAction(pending.id, () => dockerRestartContainer(pending.id));
+        void runAction(pending.id, () => dockerRestartContainer(pending.id, auth));
         break;
       case "remove-container":
-        void runAction(pending.id, () => dockerRemoveContainer(pending.id));
+        void runAction(pending.id, () => dockerRemoveContainer(pending.id, auth));
         break;
       case "remove-image":
-        void runAction(pending.key, () => dockerRemoveImage(pending.ref));
+        void runAction(pending.key, () => dockerRemoveImage(pending.ref, auth));
         break;
     }
   };
@@ -1258,7 +1440,7 @@ export function Docker() {
             variant="secondary"
             onClick={() => {
               setActionError(null);
-              void load();
+              void load(selectedHost);
             }}
           >
             {t("common.retry")}
@@ -1266,114 +1448,146 @@ export function Docker() {
         </div>
       )}
 
-      {/* Top: containers */}
-      <Card className="flex min-h-0 flex-1 flex-col overflow-hidden">
-        <PanelHeader
-          title={t("docker.containers.title")}
-          summary={
-            error
-              ? undefined
-              : loading && !hasData
-                ? t("docker.loading")
-                : t("docker.containers.summary", { count: data.containers.length })
-          }
-          loading={busy}
-          onRefresh={() => void load()}
-          refreshLabel={t("docker.refresh")}
-        />
-        <CardContent className="flex min-h-0 flex-1 flex-col overflow-hidden pt-0">
-          <TableShell
-            colWidths={containersColWidths}
-            headers={[
-              null,
-              <SortHeader
-                key="name"
-                label={t("docker.containers.col.name")}
-                col="name"
-                sortKey={containerSortKey}
-                sortDir={containerSortDir}
-                onSort={toggleContainerSort}
-              />,
-              <SortHeader
-                key="image"
-                label={t("docker.containers.col.image")}
-                col="image"
-                sortKey={containerSortKey}
-                sortDir={containerSortDir}
-                onSort={toggleContainerSort}
-              />,
-              <SortHeader
-                key="created"
-                label={t("docker.containers.col.created")}
-                col="created"
-                sortKey={containerSortKey}
-                sortDir={containerSortDir}
-                onSort={toggleContainerSort}
-              />,
-              <SortHeader
-                key="cpu"
-                label={t("docker.containers.col.cpu")}
-                col="cpu"
-                sortKey={containerSortKey}
-                sortDir={containerSortDir}
-                onSort={toggleContainerSort}
-              />,
-              <SortHeader
-                key="mem"
-                label={t("docker.containers.col.mem")}
-                col="mem"
-                sortKey={containerSortKey}
-                sortDir={containerSortDir}
-                onSort={toggleContainerSort}
-              />,
-            ]}
-            empty={
-              error || (!loading && !refreshing && data.containers.length === 0) ? (
-                <p className="py-6 text-center text-sm text-muted-foreground">
-                  {t("docker.containers.empty")}
-                </p>
-              ) : loading && data.containers.length === 0 ? (
-                <p className="py-6 text-center text-sm text-muted-foreground">
-                  {t("docker.loading")}
-                </p>
-              ) : undefined
-            }
-          >
-            {sortedContainers.map((container) => (
-              <ContainerRow
-                key={container.id}
-                container={container}
-                emptyValue={emptyValue}
-                busyKey={busyKey}
-                onStop={() =>
-                  setConfirm({
-                    kind: "stop",
-                    id: container.id,
-                    name: container.names,
-                  })
-                }
-                onRestart={() =>
-                  setConfirm({
-                    kind: "restart",
-                    id: container.id,
-                    name: container.names,
-                  })
-                }
-                onRemove={() =>
-                  setConfirm({
-                    kind: "remove-container",
-                    id: container.id,
-                    name: container.names,
-                  })
-                }
-              />
-            ))}
-          </TableShell>
-        </CardContent>
-      </Card>
-
-      {/* Bottom: images (~75%) + system df (~25%) */}
+      {/* Top: host selector (~25%) + containers (~75%), same row height */}
       <div className="flex min-h-0 flex-1 gap-3 overflow-hidden">
+        <DockerHostSelector
+          selectedHost={selectedHost}
+          onSelectLocal={() => setSelectedHost(null)}
+          onSelectHost={(host) => setSelectedHost(host)}
+        />
+
+        <Card className="flex min-h-0 min-w-0 flex-[3] flex-col overflow-hidden">
+          <PanelHeader
+            title={t("docker.containers.title")}
+            summary={
+              error
+                ? undefined
+                : loading && !hasData
+                  ? t("docker.loading")
+                  : t("docker.containers.summary", { count: data.containers.length })
+            }
+            loading={busy}
+            onRefresh={() => void load(selectedHost)}
+            refreshLabel={t("docker.refresh")}
+          />
+          <CardContent className="flex min-h-0 flex-1 flex-col overflow-hidden pt-0">
+            <TableShell
+              colWidths={containersColWidths}
+              headers={[
+                null,
+                <SortHeader
+                  key="name"
+                  label={t("docker.containers.col.name")}
+                  col="name"
+                  sortKey={containerSortKey}
+                  sortDir={containerSortDir}
+                  onSort={toggleContainerSort}
+                />,
+                <SortHeader
+                  key="image"
+                  label={t("docker.containers.col.image")}
+                  col="image"
+                  sortKey={containerSortKey}
+                  sortDir={containerSortDir}
+                  onSort={toggleContainerSort}
+                />,
+                <SortHeader
+                  key="created"
+                  label={t("docker.containers.col.created")}
+                  col="created"
+                  sortKey={containerSortKey}
+                  sortDir={containerSortDir}
+                  onSort={toggleContainerSort}
+                />,
+                <SortHeader
+                  key="cpu"
+                  label={t("docker.containers.col.cpu")}
+                  col="cpu"
+                  sortKey={containerSortKey}
+                  sortDir={containerSortDir}
+                  onSort={toggleContainerSort}
+                />,
+                <SortHeader
+                  key="mem"
+                  label={t("docker.containers.col.mem")}
+                  col="mem"
+                  sortKey={containerSortKey}
+                  sortDir={containerSortDir}
+                  onSort={toggleContainerSort}
+                />,
+              ]}
+              empty={
+                error || (!loading && !refreshing && data.containers.length === 0) ? (
+                  <p className="py-6 text-center text-sm text-muted-foreground">
+                    {t("docker.containers.empty")}
+                  </p>
+                ) : loading && data.containers.length === 0 ? (
+                  <p className="py-6 text-center text-sm text-muted-foreground">
+                    {t("docker.loading")}
+                  </p>
+                ) : undefined
+              }
+            >
+              {sortedContainers.map((container) => (
+                <ContainerRow
+                  key={container.id}
+                  container={container}
+                  emptyValue={emptyValue}
+                  busyKey={busyKey}
+                  onStop={() =>
+                    setConfirm({
+                      kind: "stop",
+                      id: container.id,
+                      name: container.names,
+                    })
+                  }
+                  onRestart={() =>
+                    setConfirm({
+                      kind: "restart",
+                      id: container.id,
+                      name: container.names,
+                    })
+                  }
+                  onRemove={() =>
+                    setConfirm({
+                      kind: "remove-container",
+                      id: container.id,
+                      name: container.names,
+                    })
+                  }
+                />
+              ))}
+            </TableShell>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Bottom: disk usage (~25%) + images (~75%) */}
+      <div className="flex min-h-0 flex-1 gap-3 overflow-hidden">
+        <Card className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+          <PanelHeader
+            title={t("docker.df.title")}
+            summary={
+              error
+                ? undefined
+                : loading && data.diskUsage.length === 0 && data.hostDisks.length === 0
+                  ? t("docker.loading")
+                  : undefined
+            }
+            loading={busy}
+            onRefresh={() => void load(selectedHost)}
+            refreshLabel={t("docker.refresh")}
+          />
+          <CardContent className="flex min-h-0 flex-1 flex-col overflow-hidden pt-0">
+            <DiskUsagePanel
+              hostDisks={data.hostDisks}
+              rows={data.diskUsage}
+              loading={loading}
+              emptyValue={emptyValue}
+            />
+          </CardContent>
+        </Card>
+
         <Card className="flex min-h-0 min-w-0 flex-[3] flex-col overflow-hidden">
           <PanelHeader
             title={t("docker.images.title")}
@@ -1385,7 +1599,7 @@ export function Docker() {
                   : t("docker.images.summary", { count: data.images.length })
             }
             loading={busy}
-            onRefresh={() => void load()}
+            onRefresh={() => void load(selectedHost)}
             refreshLabel={t("docker.refresh")}
           />
           <CardContent className="flex min-h-0 flex-1 flex-col overflow-hidden pt-0">
@@ -1479,30 +1693,6 @@ export function Docker() {
             </TableShell>
           </CardContent>
         </Card>
-
-        <Card className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
-          <PanelHeader
-            title={t("docker.df.title")}
-            summary={
-              error
-                ? undefined
-                : loading && data.diskUsage.length === 0 && data.hostDisks.length === 0
-                  ? t("docker.loading")
-                  : undefined
-            }
-            loading={busy}
-            onRefresh={() => void load()}
-            refreshLabel={t("docker.refresh")}
-          />
-          <CardContent className="flex min-h-0 flex-1 flex-col overflow-hidden pt-0">
-            <DiskUsagePanel
-              hostDisks={data.hostDisks}
-              rows={data.diskUsage}
-              loading={loading}
-              emptyValue={emptyValue}
-            />
-          </CardContent>
-        </Card>
       </div>
 
       <CenterDialog
@@ -1552,13 +1742,16 @@ export function Docker() {
             const key = `${renameTarget.id}:${renameTarget.oldRepository}:${renameTarget.oldTag}`;
             setRenameTarget(null);
             void runAction(key, () =>
-              dockerRenameImage({
-                id: renameTarget.id,
-                oldRepository: renameTarget.oldRepository,
-                oldTag: renameTarget.oldTag,
-                repository,
-                tag,
-              }),
+              dockerRenameImage(
+                {
+                  id: renameTarget.id,
+                  oldRepository: renameTarget.oldRepository,
+                  oldTag: renameTarget.oldTag,
+                  repository,
+                  tag,
+                },
+                auth,
+              ),
             );
           }}
         >

@@ -184,6 +184,29 @@ fn ssh_target(
     }
 }
 
+/// Build an SSH target when `ip` is present; otherwise target the local host.
+fn optional_ssh_target(
+    ip: Option<String>,
+    port: Option<u16>,
+    username: Option<String>,
+    auth_mode: Option<String>,
+    password: Option<String>,
+    ssh_private_key_path: Option<String>,
+) -> Option<SshTarget> {
+    let ip = ip?.trim().to_string();
+    if ip.is_empty() {
+        return None;
+    }
+    Some(ssh_target(
+        ip,
+        port,
+        username.unwrap_or_default(),
+        auth_mode.unwrap_or_else(|| "ssh".into()),
+        password,
+        ssh_private_key_path,
+    ))
+}
+
 #[tauri::command]
 pub fn local_list_dir(
     path: Option<String>,
@@ -385,26 +408,96 @@ pub async fn list_docker_images() -> Result<Vec<DockerImage>, crate::error::Link
 }
 
 /// Containers + images + `docker system df` for the Docker Stats page.
+///
+/// When `ip` is set, runs against that host over SSH; otherwise local Docker.
+#[allow(clippy::too_many_arguments)]
 #[tauri::command]
-pub async fn get_docker_overview() -> Result<DockerOverview, crate::error::LinkSightError> {
-    docker::overview().await
+pub async fn get_docker_overview(
+    ip: Option<String>,
+    port: Option<u16>,
+    username: Option<String>,
+    auth_mode: Option<String>,
+    password: Option<String>,
+    ssh_private_key_path: Option<String>,
+) -> Result<DockerOverview, crate::error::LinkSightError> {
+    let target = optional_ssh_target(
+        ip,
+        port,
+        username,
+        auth_mode,
+        password,
+        ssh_private_key_path,
+    );
+    docker::overview_for(target.as_ref()).await
 }
 
+#[allow(clippy::too_many_arguments)]
 #[tauri::command]
-pub async fn docker_stop_container(id: String) -> Result<(), LinkSightError> {
-    docker::stop_container(&id).await
+pub async fn docker_stop_container(
+    id: String,
+    ip: Option<String>,
+    port: Option<u16>,
+    username: Option<String>,
+    auth_mode: Option<String>,
+    password: Option<String>,
+    ssh_private_key_path: Option<String>,
+) -> Result<(), LinkSightError> {
+    let target = optional_ssh_target(
+        ip,
+        port,
+        username,
+        auth_mode,
+        password,
+        ssh_private_key_path,
+    );
+    docker::stop_container(&id, target.as_ref()).await
 }
 
+#[allow(clippy::too_many_arguments)]
 #[tauri::command]
-pub async fn docker_restart_container(id: String) -> Result<(), LinkSightError> {
-    docker::restart_container(&id).await
+pub async fn docker_restart_container(
+    id: String,
+    ip: Option<String>,
+    port: Option<u16>,
+    username: Option<String>,
+    auth_mode: Option<String>,
+    password: Option<String>,
+    ssh_private_key_path: Option<String>,
+) -> Result<(), LinkSightError> {
+    let target = optional_ssh_target(
+        ip,
+        port,
+        username,
+        auth_mode,
+        password,
+        ssh_private_key_path,
+    );
+    docker::restart_container(&id, target.as_ref()).await
 }
 
+#[allow(clippy::too_many_arguments)]
 #[tauri::command]
-pub async fn docker_remove_container(id: String) -> Result<(), LinkSightError> {
-    docker::remove_container(&id).await
+pub async fn docker_remove_container(
+    id: String,
+    ip: Option<String>,
+    port: Option<u16>,
+    username: Option<String>,
+    auth_mode: Option<String>,
+    password: Option<String>,
+    ssh_private_key_path: Option<String>,
+) -> Result<(), LinkSightError> {
+    let target = optional_ssh_target(
+        ip,
+        port,
+        username,
+        auth_mode,
+        password,
+        ssh_private_key_path,
+    );
+    docker::remove_container(&id, target.as_ref()).await
 }
 
+#[allow(clippy::too_many_arguments)]
 #[tauri::command]
 pub async fn docker_rename_image(
     id: String,
@@ -412,13 +505,52 @@ pub async fn docker_rename_image(
     old_tag: String,
     repository: String,
     tag: String,
+    ip: Option<String>,
+    port: Option<u16>,
+    username: Option<String>,
+    auth_mode: Option<String>,
+    password: Option<String>,
+    ssh_private_key_path: Option<String>,
 ) -> Result<(), LinkSightError> {
-    docker::rename_image(&id, &old_repository, &old_tag, &repository, &tag).await
+    let target = optional_ssh_target(
+        ip,
+        port,
+        username,
+        auth_mode,
+        password,
+        ssh_private_key_path,
+    );
+    docker::rename_image(
+        &id,
+        &old_repository,
+        &old_tag,
+        &repository,
+        &tag,
+        target.as_ref(),
+    )
+    .await
 }
 
+#[allow(clippy::too_many_arguments)]
 #[tauri::command]
-pub async fn docker_remove_image(id_or_ref: String) -> Result<(), LinkSightError> {
-    docker::remove_image(&id_or_ref).await
+pub async fn docker_remove_image(
+    id_or_ref: String,
+    ip: Option<String>,
+    port: Option<u16>,
+    username: Option<String>,
+    auth_mode: Option<String>,
+    password: Option<String>,
+    ssh_private_key_path: Option<String>,
+) -> Result<(), LinkSightError> {
+    let target = optional_ssh_target(
+        ip,
+        port,
+        username,
+        auth_mode,
+        password,
+        ssh_private_key_path,
+    );
+    docker::remove_image(&id_or_ref, target.as_ref()).await
 }
 
 // ---- Saved hosts (Termius-style host manager) --------------------------------
@@ -473,6 +605,15 @@ pub async fn save_host(
 #[tauri::command]
 pub async fn delete_host(id: String, state: State<'_, AppState>) -> Result<(), LinkSightError> {
     require_db(&state)?.delete_host(&id).await
+}
+
+/// Persist host card order on the Hosts page.
+#[tauri::command]
+pub async fn reorder_hosts(
+    ids: Vec<String>,
+    state: State<'_, AppState>,
+) -> Result<(), LinkSightError> {
+    require_db(&state)?.reorder_hosts(&ids).await
 }
 
 /// Validate a local private-key file (format + fingerprint). No network I/O.
@@ -547,15 +688,6 @@ fn app_data_dir() -> Result<std::path::PathBuf, LinkSightError> {
     std::env::var("HOME")
         .map(|home| std::path::PathBuf::from(home).join(".local/share"))
         .map_err(|_| LinkSightError::CommandFailed("cannot resolve data directory".into()))
-}
-
-/// Persist host card order on the Hosts page.
-#[tauri::command]
-pub async fn reorder_hosts(
-    ids: Vec<String>,
-    state: State<'_, AppState>,
-) -> Result<(), LinkSightError> {
-    require_db(&state)?.reorder_hosts(&ids).await
 }
 
 /// Verify a host: TCP reachability, then SSH password or public-key auth.

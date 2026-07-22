@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import { getDockerOverview } from "@/lib/api";
-import type { DockerOverview } from "@/lib/types";
+import type { DockerOverview, HostRecord } from "@/lib/types";
 
 const EMPTY_OVERVIEW: DockerOverview = {
   containers: [],
@@ -17,9 +17,18 @@ interface DockerState {
   refreshing: boolean;
   error: string | null;
   hasLoaded: boolean;
+  /** `null` = local host 127.0.0.1 */
+  selectedHost: HostRecord | null;
+  /** Cache key for the last successful load (`local` or host id). */
+  loadedKey: string | null;
 
-  load: () => Promise<void>;
+  setSelectedHost: (host: HostRecord | null) => void;
+  load: (host?: HostRecord | null) => Promise<void>;
   setData: (data: DockerOverview) => void;
+}
+
+function hostKey(host: HostRecord | null | undefined): string {
+  return host?.id ?? "local";
 }
 
 /**
@@ -32,17 +41,48 @@ export const useDockerStore = create<DockerState>((set, get) => ({
   refreshing: false,
   error: null,
   hasLoaded: false,
+  selectedHost: null,
+  loadedKey: null,
 
   setData: (data) => set({ data }),
 
-  load: async () => {
-    const { hasLoaded, data } = get();
+  setSelectedHost: (host) => {
+    const prev = get().selectedHost;
+    if ((prev?.id ?? null) === (host?.id ?? null)) return;
+    set({
+      selectedHost: host,
+      data: EMPTY_OVERVIEW,
+      hasLoaded: false,
+      loadedKey: null,
+      error: null,
+    });
+  },
+
+  load: async (hostArg) => {
+    const host = hostArg === undefined ? get().selectedHost : hostArg;
+    if (hostArg !== undefined) {
+      const prev = get().selectedHost;
+      if ((prev?.id ?? null) !== (host?.id ?? null)) {
+        set({
+          selectedHost: host ?? null,
+          data: EMPTY_OVERVIEW,
+          hasLoaded: false,
+          loadedKey: null,
+          error: null,
+        });
+      }
+    }
+
+    const key = hostKey(host);
+    const { hasLoaded, data, loadedKey } = get();
+    const sameHost = loadedKey === key;
     const hasSnapshot =
-      hasLoaded ||
-      data.containers.length > 0 ||
-      data.images.length > 0 ||
-      data.diskUsage.length > 0 ||
-      data.hostDisks.length > 0;
+      sameHost &&
+      (hasLoaded ||
+        data.containers.length > 0 ||
+        data.images.length > 0 ||
+        data.diskUsage.length > 0 ||
+        data.hostDisks.length > 0);
 
     if (hasSnapshot) {
       set({ refreshing: true, error: null });
@@ -51,7 +91,20 @@ export const useDockerStore = create<DockerState>((set, get) => ({
     }
 
     try {
-      const next = await getDockerOverview();
+      const next = await getDockerOverview(
+        host
+          ? {
+              ip: host.ip,
+              port: host.port,
+              username: host.username,
+              authMode: host.authMode ?? "ssh",
+              password: host.password,
+              sshPrivateKeyPath: host.sshPrivateKeyPath,
+            }
+          : undefined,
+      );
+      // Ignore stale responses if the user switched hosts mid-flight.
+      if (hostKey(get().selectedHost) !== key) return;
       set({
         data: {
           ...next,
@@ -62,15 +115,16 @@ export const useDockerStore = create<DockerState>((set, get) => ({
         },
         error: null,
         hasLoaded: true,
+        loadedKey: key,
         loading: false,
         refreshing: false,
       });
     } catch (err) {
+      if (hostKey(get().selectedHost) !== key) return;
       set({
         error: err instanceof Error ? err.message : String(err),
         loading: false,
         refreshing: false,
-        // Keep prior snapshot on refresh failure; only clear when first load fails.
         ...(hasSnapshot ? {} : { data: EMPTY_OVERVIEW }),
       });
     }

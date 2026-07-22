@@ -231,40 +231,77 @@ export function listDockerImages(): Promise<DockerImage[]> {
 }
 
 /** Containers, images, and `docker system df` for the Docker Stats page. */
-export function getDockerOverview(): Promise<DockerOverview> {
-  return tauriInvoke<DockerOverview>("get_docker_overview");
+export function getDockerOverview(
+  host?: HostAuthParams | null,
+): Promise<DockerOverview> {
+  return tauriInvoke<DockerOverview>(
+    "get_docker_overview",
+    host ? hostArgs(host) : {},
+  );
 }
 
-export function dockerStopContainer(id: string): Promise<void> {
-  return tauriInvoke<void>("docker_stop_container", { id });
+function dockerHostArgs(host?: HostAuthParams | null) {
+  return host ? hostArgs(host) : {};
 }
 
-export function dockerRestartContainer(id: string): Promise<void> {
-  return tauriInvoke<void>("docker_restart_container", { id });
+export function dockerStopContainer(
+  id: string,
+  host?: HostAuthParams | null,
+): Promise<void> {
+  return tauriInvoke<void>("docker_stop_container", {
+    id,
+    ...dockerHostArgs(host),
+  });
 }
 
-export function dockerRemoveContainer(id: string): Promise<void> {
-  return tauriInvoke<void>("docker_remove_container", { id });
+export function dockerRestartContainer(
+  id: string,
+  host?: HostAuthParams | null,
+): Promise<void> {
+  return tauriInvoke<void>("docker_restart_container", {
+    id,
+    ...dockerHostArgs(host),
+  });
 }
 
-export function dockerRenameImage(params: {
-  id: string;
-  oldRepository: string;
-  oldTag: string;
-  repository: string;
-  tag: string;
-}): Promise<void> {
+export function dockerRemoveContainer(
+  id: string,
+  host?: HostAuthParams | null,
+): Promise<void> {
+  return tauriInvoke<void>("docker_remove_container", {
+    id,
+    ...dockerHostArgs(host),
+  });
+}
+
+export function dockerRenameImage(
+  params: {
+    id: string;
+    oldRepository: string;
+    oldTag: string;
+    repository: string;
+    tag: string;
+  },
+  host?: HostAuthParams | null,
+): Promise<void> {
   return tauriInvoke<void>("docker_rename_image", {
     id: params.id,
     oldRepository: params.oldRepository,
     oldTag: params.oldTag,
     repository: params.repository,
     tag: params.tag,
+    ...dockerHostArgs(host),
   });
 }
 
-export function dockerRemoveImage(idOrRef: string): Promise<void> {
-  return tauriInvoke<void>("docker_remove_image", { idOrRef });
+export function dockerRemoveImage(
+  idOrRef: string,
+  host?: HostAuthParams | null,
+): Promise<void> {
+  return tauriInvoke<void>("docker_remove_image", {
+    idOrRef,
+    ...dockerHostArgs(host),
+  });
 }
 
 // ---- Saved hosts (Termius-style host manager) --------------------------------

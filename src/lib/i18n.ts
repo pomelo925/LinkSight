@@ -403,9 +403,11 @@ const en: Messages = {
 
   // Docker
   "docker.title": "Docker Stats",
-  "docker.description": "Local containers, images, and Docker disk usage.",
+  "docker.description": "Containers, images, and Docker disk usage for the selected host.",
   "docker.loading": "Loading Docker data…",
   "docker.refresh": "Refresh",
+  "docker.host.pick": "Switch host",
+  "docker.host.localSubtitle": "This machine",
   "docker.error.hint": "Make sure Docker is installed. If you use ./run.sh, recreate the container so docker.sock is mounted.",
 
   "docker.containers.title": "Containers",
@@ -842,9 +844,11 @@ const zhTW: Messages = {
   "settings.about.copyright": "© 2026 pomelo925",
 
   "docker.title": "Docker 狀態",
-  "docker.description": "本機 containers、images 與 Docker 磁碟用量。",
+  "docker.description": "依所選主機顯示 containers、images 與 Docker 磁碟用量。",
   "docker.loading": "載入 Docker 資料中…",
   "docker.refresh": "重新整理",
+  "docker.host.pick": "切換主機",
+  "docker.host.localSubtitle": "本機",
   "docker.error.hint": "請確認已安裝 Docker。若使用 ./run.sh，請重建容器以掛載 docker.sock。",
 
   "docker.containers.title": "Containers",
