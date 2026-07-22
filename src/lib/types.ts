@@ -264,6 +264,8 @@ export interface VerifyResult {
   authMethod: "password" | "publickey" | null;
   /** True when a public key was deployed during verify (ssh-copy-id). */
   keyDeployed: boolean | null;
+  /** Primary remote NIC MAC (best-effort after successful auth). */
+  mac?: string | null;
 }
 
 export type FileEntryKind = "dir" | "file" | "symlink";

@@ -13,6 +13,7 @@ use russh::client::{self, AuthResult};
 use serde::{Deserialize, Serialize};
 
 use super::deploy::deploy_public_key;
+use super::exec::{run_remote_command, SshTarget};
 use super::keys::{
     self, private_key_with_hash, resolve_public_key_line, validate_private_key,
     validate_public_key_text,
@@ -35,6 +36,9 @@ pub struct VerifyResult {
     pub auth_method: Option<String>,
     /// True when a public key was deployed to the server during this verify run.
     pub key_deployed: Option<bool>,
+    /// Primary NIC MAC on the remote host (best-effort after successful auth).
+    #[serde(default)]
+    pub mac: Option<String>,
 }
 
 pub(crate) struct AcceptAllKeys;
@@ -79,6 +83,54 @@ pub async fn verify_host(
     ssh_private_key_path: Option<&str>,
     ssh_public_key: Option<&str>,
 ) -> Result<VerifyResult> {
+    let mut result = verify_host_inner(
+        auth_mode,
+        ip,
+        port,
+        username,
+        password,
+        ssh_private_key_path,
+        ssh_public_key,
+    )
+    .await?;
+
+    if result.authenticated {
+        let target = SshTarget {
+            addr: format!("{}:{}", ip.trim(), effective_port(port)),
+            username: username.to_string(),
+            auth_mode: auth_mode.to_string(),
+            password: password.map(str::to_string),
+            private_key_path: ssh_private_key_path.map(str::to_string),
+        };
+        result.mac = fetch_remote_mac(&target).await;
+    }
+
+    Ok(result)
+}
+
+/// Best-effort primary interface MAC via SSH (`ip route` → `/sys/class/net`).
+async fn fetch_remote_mac(target: &SshTarget) -> Option<String> {
+    const CMD: &str = r#"IFACE=$(ip -4 route show default 2>/dev/null | awk '{for(i=1;i<=NF;i++) if($i=="dev"){print $(i+1); exit}}'); if [ -n "$IFACE" ] && [ -r "/sys/class/net/$IFACE/address" ]; then cat "/sys/class/net/$IFACE/address"; else for d in /sys/class/net/*/address; do iface=$(basename "$(dirname "$d")"); [ "$iface" = "lo" ] && continue; mac=$(cat "$d" 2>/dev/null); [ -n "$mac" ] && [ "$mac" != "00:00:00:00:00:00" ] && echo "$mac" && break; done; fi"#;
+    let out = run_remote_command(target, CMD, Duration::from_secs(8))
+        .await
+        .ok()?;
+    let mac = out.stdout.trim().to_ascii_lowercase();
+    if mac.len() >= 11 && mac.contains(':') {
+        Some(mac)
+    } else {
+        None
+    }
+}
+
+async fn verify_host_inner(
+    auth_mode: &str,
+    ip: &str,
+    port: Option<u16>,
+    username: &str,
+    password: Option<&str>,
+    ssh_private_key_path: Option<&str>,
+    ssh_public_key: Option<&str>,
+) -> Result<VerifyResult> {
     if ip.trim().is_empty() || username.trim().is_empty() {
         return Err(LinkSightError::InvalidInput(
             "ip and username are required".into(),
@@ -115,6 +167,7 @@ pub async fn verify_host(
                 public_key_fingerprint: check.fingerprint.clone(),
                 auth_method: None,
                 key_deployed: None,
+                mac: None,
             });
         }
     }
@@ -173,6 +226,7 @@ pub async fn verify_host(
                     auth_method: None,
                     key_deployed: Some(false),
                     public_key_valid: None,
+                    mac: None,
                 });
             }
 
@@ -193,6 +247,7 @@ pub async fn verify_host(
                         auth_method: None,
                         key_deployed: Some(false),
                         public_key_valid: None,
+                        mac: None,
                     });
                 }
             };
@@ -211,6 +266,7 @@ pub async fn verify_host(
                     auth_method: None,
                     key_deployed: Some(false),
                     public_key_valid: Some(true),
+                    mac: None,
                 });
             }
 
@@ -239,6 +295,7 @@ pub async fn verify_host(
                     auth_method: None,
                     key_deployed: Some(true),
                     public_key_valid: Some(true),
+                    mac: None,
                 }),
             }
         }
@@ -259,6 +316,7 @@ fn fail_tcp(
         public_key_fingerprint: private_check.and_then(|c| c.fingerprint),
         auth_method: None,
         key_deployed: None,
+        mac: None,
     }
 }
 
@@ -285,6 +343,7 @@ async fn finish_password_auth(
             public_key_fingerprint: None,
             auth_method: None,
             key_deployed,
+            mac: None,
         }),
     }
 }
@@ -317,6 +376,7 @@ async fn try_password_auth(
             public_key_fingerprint: None,
             auth_method: None,
             key_deployed: None,
+            mac: None,
         }),
         Ok(Ok(AuthResult::Failure { .. })) => {
             Err("authentication rejected — check username / password".into())
@@ -360,6 +420,7 @@ async fn try_publickey_auth(
             public_key_fingerprint: None,
             auth_method: None,
             key_deployed: None,
+            mac: None,
         }),
         Ok(Ok(AuthResult::Failure { .. })) => {
             Err("public-key authentication rejected — key may not be on the server yet".into())

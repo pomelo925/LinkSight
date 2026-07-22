@@ -41,6 +41,7 @@ export function useHostSelection() {
           publicKeyFingerprint: null,
           authMethod: null,
           keyDeployed: null,
+          mac: null,
         });
       }
     },

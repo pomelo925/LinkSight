@@ -441,6 +441,11 @@ export function Home() {
                       ? `:${selectedHost.port}`
                       : ""
                   }`}
+                  footer={
+                    verifyStatus === "ok" && verifyResult?.mac
+                      ? verifyResult.mac
+                      : null
+                  }
                 />
               </motion.div>
             </>
