@@ -341,13 +341,10 @@ fn normalize_cpu_perc(raw: &str, host_cpus: u32) -> String {
 }
 
 async fn host_cpu_count(target: Option<&SshTarget>) -> u32 {
-    match docker_output(&["info", "--format", "{{.NCPU}}"], target).await {
-        Ok(stdout) => {
-            if let Some(n) = stdout.trim().parse::<u32>().ok().filter(|n| *n > 0) {
-                return n;
-            }
+    if let Ok(stdout) = docker_output(&["info", "--format", "{{.NCPU}}"], target).await {
+        if let Some(n) = stdout.trim().parse::<u32>().ok().filter(|n| *n > 0) {
+            return n;
         }
-        Err(_) => {}
     }
 
     match target {
@@ -444,9 +441,10 @@ fn parse_docker_size_bytes(raw: &str) -> u64 {
 }
 
 async fn docker_root_dir(target: Option<&SshTarget>) -> String {
-    match docker_output(&["info", "--format", "{{.DockerRootDir}}"], target).await {
-        Ok(s) => s.trim().to_string(),
-        Err(_) => String::new(),
+    if let Ok(s) = docker_output(&["info", "--format", "{{.DockerRootDir}}"], target).await {
+        s.trim().to_string()
+    } else {
+        String::new()
     }
 }
 
