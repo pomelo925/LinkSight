@@ -205,12 +205,11 @@ impl Db {
     }
 
     pub async fn insert_host(&self, host: &HostRecord) -> Result<()> {
-        let next_order: i64 = sqlx::query_scalar(
-            "SELECT COALESCE(MAX(sort_order), -1) + 1 FROM hosts",
-        )
-        .fetch_one(&self.pool)
-        .await
-        .unwrap_or(0);
+        let next_order: i64 =
+            sqlx::query_scalar("SELECT COALESCE(MAX(sort_order), -1) + 1 FROM hosts")
+                .fetch_one(&self.pool)
+                .await
+                .unwrap_or(0);
 
         sqlx::query(
             "INSERT INTO hosts \

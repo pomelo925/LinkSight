@@ -343,12 +343,7 @@ fn normalize_cpu_perc(raw: &str, host_cpus: u32) -> String {
 async fn host_cpu_count(target: Option<&SshTarget>) -> u32 {
     match docker_output(&["info", "--format", "{{.NCPU}}"], target).await {
         Ok(stdout) => {
-            if let Some(n) = stdout
-                .trim()
-                .parse::<u32>()
-                .ok()
-                .filter(|n| *n > 0)
-            {
+            if let Some(n) = stdout.trim().parse::<u32>().ok().filter(|n| *n > 0) {
                 return n;
             }
         }
