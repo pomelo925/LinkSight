@@ -61,8 +61,9 @@ jobs:
           # __VERSION__ is read from tauri.conf.json (synced from the tag above).
           tagName: v__VERSION__
           releaseName: LinkSight v__VERSION__
-          # Publish immediately so /releases/latest and shields.io badges stay current.
-          releaseDraft: false
+          # Draft first so you can verify assets / notes on the same tag,
+          # then publish with: gh release edit vX.Y.Z --draft=false
+          releaseDraft: true
           prerelease: false
           # Linux-only distribution: AppImage (portable) + deb (Ubuntu/Debian).
           args: --bundles appimage,deb
