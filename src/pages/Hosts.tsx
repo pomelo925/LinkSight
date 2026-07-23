@@ -35,9 +35,10 @@ const EMPTY_HOST: HostRecord = {
 /** Fixed card width — only reflows to next row, never stretches. */
 const HOST_CARD_W = "17.5rem";
 const HOST_CARD_W_DRAG = "14.5rem";
-const LONG_PRESS_MS = 250;
+const LONG_PRESS_MS = 80;
 const FIXED_GAP_PX = 8;
-const MOVE_CANCEL_PX = 10;
+/** Start reorder as soon as the pointer moves this far while pressed. */
+const MOVE_START_PX = 4;
 
 const drawerEase = [0.32, 0.72, 0, 1] as const;
 
@@ -410,9 +411,15 @@ export function Hosts() {
                       origin.y = e.clientY;
                       const dx = e.clientX - origin.startX;
                       const dy = e.clientY - origin.startY;
-                      if (dx * dx + dy * dy > MOVE_CANCEL_PX * MOVE_CANCEL_PX) {
+                      // Press + drag: enter reorder immediately (no wait-in-place).
+                      if (dx * dx + dy * dy > MOVE_START_PX * MOVE_START_PX) {
                         clearLongPress();
-                        pressOrigin.current = null;
+                        beginDrag(
+                          h.id,
+                          origin.pointerId,
+                          origin.x,
+                          origin.y,
+                        );
                       }
                     }}
                     onPointerUp={() => {
