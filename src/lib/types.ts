@@ -332,6 +332,8 @@ export interface DockerContainer {
   createdAt: string;
   runningFor: string;
   size: string;
+  /** Compose project (`com.docker.compose.project`); empty when standalone. */
+  project?: string;
   /** From `docker stats` (e.g. `"0.04%"`); empty when unavailable. */
   cpuPerc: string;
   /** From `docker stats` (e.g. `"690.2MiB / 31.09GiB"`); empty when unavailable. */

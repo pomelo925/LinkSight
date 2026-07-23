@@ -23,6 +23,7 @@ commands.allow = [
     "list_network_interfaces",
     "list_docker_images",
     "get_docker_overview",
+    "get_docker_containers_live",
     "docker_stop_container",
     "docker_restart_container",
     "docker_remove_container",

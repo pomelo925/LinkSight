@@ -1,6 +1,6 @@
 //! Docker introspection via the `docker` CLI — local or over SSH.
 
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
 use std::collections::HashMap;
 use std::path::Path;
 use std::sync::OnceLock;
@@ -41,6 +41,9 @@ pub struct DockerContainer {
     pub created_at: String,
     pub running_for: String,
     pub size: String,
+    /// Compose project from `com.docker.compose.project` (empty when standalone).
+    #[serde(default)]
+    pub project: String,
     /// From `docker stats` (e.g. `"0.04%"`); empty when unavailable.
     pub cpu_perc: String,
     /// From `docker stats` (e.g. `"690.2MiB / 31.09GiB"`); empty when unavailable.
@@ -126,6 +129,43 @@ struct DockerContainerLine {
     running_for: String,
     #[serde(rename = "Size")]
     size: String,
+    /// Comma-separated `key=value` pairs from `docker ps --format '{{json .}}'`.
+    #[serde(default, rename = "Labels", deserialize_with = "deserialize_labels")]
+    labels: String,
+}
+
+fn deserialize_labels<'de, D>(deserializer: D) -> std::result::Result<String, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let value = serde_json::Value::deserialize(deserializer)?;
+    Ok(match value {
+        serde_json::Value::Null => String::new(),
+        serde_json::Value::String(s) => s,
+        serde_json::Value::Object(map) => map
+            .iter()
+            .map(|(k, v)| {
+                let val = v.as_str().map(str::to_string).unwrap_or_else(|| v.to_string());
+                format!("{k}={val}")
+            })
+            .collect::<Vec<_>>()
+            .join(","),
+        other => other.to_string(),
+    })
+}
+
+/// Extract Compose project name from docker Labels (`com.docker.compose.project=…`).
+fn compose_project_from_labels(labels: &str) -> String {
+    for part in labels.split(',') {
+        let part = part.trim();
+        if let Some(value) = part.strip_prefix("com.docker.compose.project=") {
+            let value = value.trim();
+            if !value.is_empty() {
+                return value.to_string();
+            }
+        }
+    }
+    String::new()
 }
 
 #[derive(Debug, Deserialize)]
@@ -295,11 +335,25 @@ async fn list_containers_for(target: Option<&SshTarget>) -> Result<Vec<DockerCon
             created_at: raw.created_at,
             running_for: raw.running_for,
             size: raw.size,
+            project: compose_project_from_labels(&raw.labels),
             cpu_perc: String::new(),
             mem_usage: String::new(),
         },
         "docker container line",
     )
+}
+
+/// Lightweight live view: `docker ps -a` + `docker stats` (no images / disk).
+///
+/// Intended for high-frequency polling on the Docker Stats page.
+pub async fn containers_live_for(target: Option<&SshTarget>) -> Result<Vec<DockerContainer>> {
+    let (mut containers, stats, host_cpus) = tokio::try_join!(
+        list_containers_for(target),
+        container_stats_map(target),
+        async { Ok::<u32, LinkSightError>(host_cpu_count(target).await) },
+    )?;
+    apply_stats(&mut containers, &stats, host_cpus);
+    Ok(containers)
 }
 
 /// Live CPU / memory from `docker stats --no-stream --all`.

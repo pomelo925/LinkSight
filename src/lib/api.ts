@@ -13,6 +13,7 @@ import type {
   HostRecord,
   InterfaceInfo,
   DockerImage,
+  DockerContainer,
   DockerOverview,
   FileListing,
   NetworkTestResult,
@@ -236,6 +237,16 @@ export function getDockerOverview(
 ): Promise<DockerOverview> {
   return tauriInvoke<DockerOverview>(
     "get_docker_overview",
+    host ? hostArgs(host) : {},
+  );
+}
+
+/** Live containers + CPU/mem stats (lightweight poll). */
+export function getDockerContainersLive(
+  host?: HostAuthParams | null,
+): Promise<DockerContainer[]> {
+  return tauriInvoke<DockerContainer[]>(
+    "get_docker_containers_live",
     host ? hostArgs(host) : {},
   );
 }

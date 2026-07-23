@@ -106,6 +106,7 @@ pub fn run() {
             commands::list_network_interfaces,
             commands::list_docker_images,
             commands::get_docker_overview,
+            commands::get_docker_containers_live,
             commands::docker_stop_container,
             commands::docker_restart_container,
             commands::docker_remove_container,

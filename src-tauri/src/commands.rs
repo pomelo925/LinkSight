@@ -22,7 +22,7 @@ use crate::ssh::exec::SshTarget;
 use crate::ssh::keys::{PrivateKeyValidation, PublicKeyValidation};
 use crate::ssh::sftp;
 use crate::ssh::verify::{self, VerifyResult};
-use crate::system::docker::{self, DockerImage, DockerOverview};
+use crate::system::docker::{self, DockerContainer, DockerImage, DockerOverview};
 use crate::system::interface::{list_interfaces, InterfaceInfo};
 use crate::AppState;
 
@@ -429,6 +429,28 @@ pub async fn get_docker_overview(
         ssh_private_key_path,
     );
     docker::overview_for(target.as_ref()).await
+}
+
+/// Live containers + stats only (for high-frequency polling).
+#[allow(clippy::too_many_arguments)]
+#[tauri::command]
+pub async fn get_docker_containers_live(
+    ip: Option<String>,
+    port: Option<u16>,
+    username: Option<String>,
+    auth_mode: Option<String>,
+    password: Option<String>,
+    ssh_private_key_path: Option<String>,
+) -> Result<Vec<DockerContainer>, crate::error::LinkSightError> {
+    let target = optional_ssh_target(
+        ip,
+        port,
+        username,
+        auth_mode,
+        password,
+        ssh_private_key_path,
+    );
+    docker::containers_live_for(target.as_ref()).await
 }
 
 #[allow(clippy::too_many_arguments)]
