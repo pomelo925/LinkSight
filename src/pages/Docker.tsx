@@ -2,8 +2,12 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import {
   Box,
+  ChevronDown,
+  ChevronRight,
+  ChevronUp,
   Container,
   Diamond,
+  Layers,
   Loader2,
   Monitor,
   MoreVertical,
@@ -31,7 +35,7 @@ import {
 } from "@/lib/api";
 import { useI18n } from "@/hooks/useI18n";
 import { HOVER_POP_GROUP, HOVER_POP_STATUS } from "@/lib/interactive";
-import { useDockerStore } from "@/store/useDockerStore";
+import { useDockerStore, DOCKER_LIVE_POLL_MS } from "@/store/useDockerStore";
 import { useHostStore } from "@/store/useHostStore";
 import { isTauri } from "@/lib/tauri";
 import { cn } from "@/lib/utils";
@@ -46,6 +50,12 @@ import type {
 /** Image name column: hug longest text up to 20rem, stay as short as possible. */
 /** Actions column (⋮ button). */
 const ACTIONS_COL_PX = 24;
+/** Containers: no separate ⋮ column — menu lives in Status. */
+const CONTAINER_ACTIONS_COL_PX = 0;
+/** Tighter gaps so status / name stay close. */
+const CONTAINER_TABLE_GAP_PX = 2;
+/** ⋮ (24) + gap (2) + status glyph (20). */
+const CONTAINER_STATUS_COL_PX = 46;
 
 const COL_MIN_PX = 3 * 16;
 const COL_MAX_PX = 20 * 16;
@@ -96,8 +106,9 @@ function hugColumnPx(spec: HugColSpec): number {
   return Math.min(max, Math.max(min, Math.ceil(longest + chrome + 4)));
 }
 
-function hugGridCols(colPx: number[]): number[] {
-  return [ACTIONS_COL_PX, ...colPx];
+function hugGridCols(colPx: number[], actionsColPx = ACTIONS_COL_PX): number[] {
+  if (actionsColPx <= 0) return [...colPx];
+  return [actionsColPx, ...colPx];
 }
 
 /** Fixed gap between columns (Tailwind gap-3). Leftover width expands columns. */
@@ -109,7 +120,7 @@ const TABLE_GRID_CLASS = "grid items-center";
 const TABLE_PAD_X_PX = 16;
 
 type SortDir = "asc" | "desc";
-type ContainerSortKey = "name" | "image" | "created" | "cpu" | "mem";
+type ContainerSortKey = "name" | "status" | "created" | "cpu" | "mem";
 type ImageSortKey = "repository" | "tag" | "size" | "created";
 
 function shortId(id: string): string {
@@ -176,6 +187,24 @@ function parseMemUsedBytes(raw: string): number {
   return parseDockerSize(used);
 }
 
+/** Lower = higher priority when sorting by status (running first). */
+function containerStatusRank(state: string): number {
+  const normalized = state.toLowerCase();
+  if (normalized === "running") return 0;
+  if (normalized === "restarting") return 1;
+  if (normalized === "paused") return 2;
+  if (
+    normalized === "exited" ||
+    normalized === "dead" ||
+    normalized === "created" ||
+    normalized === "removing" ||
+    normalized === "stopped"
+  ) {
+    return 3;
+  }
+  return 4;
+}
+
 function compareContainers(
   a: DockerContainer,
   b: DockerContainer,
@@ -184,8 +213,11 @@ function compareContainers(
   switch (key) {
     case "name":
       return a.names.localeCompare(b.names, undefined, { sensitivity: "base" });
-    case "image":
-      return a.image.localeCompare(b.image, undefined, { sensitivity: "base" });
+    case "status": {
+      const byRank = containerStatusRank(a.state) - containerStatusRank(b.state);
+      if (byRank !== 0) return byRank;
+      return a.names.localeCompare(b.names, undefined, { sensitivity: "base" });
+    }
     case "created":
       return parseCreatedMs(a.createdAt) - parseCreatedMs(b.createdAt);
     case "cpu":
@@ -262,13 +294,25 @@ function PanelHeader({
   loading,
   onRefresh,
   refreshLabel,
+  expanded,
+  onToggleExpand,
+  expandLabel,
+  collapseLabel,
 }: {
   title: string;
   summary?: string;
   loading?: boolean;
   onRefresh?: () => void;
   refreshLabel?: string;
+  /** When set with onToggleExpand, shows a fold/unfold control. */
+  expanded?: boolean;
+  onToggleExpand?: () => void;
+  expandLabel?: string;
+  collapseLabel?: string;
 }) {
+  const FoldIcon = expanded ? ChevronUp : ChevronDown;
+  const foldLabel = expanded ? collapseLabel : expandLabel;
+
   return (
     <CardHeader className="shrink-0 py-2.5">
       <div className="flex items-center justify-between gap-3">
@@ -286,6 +330,19 @@ function PanelHeader({
               <RefreshCw
                 className={cn("h-4 w-4", loading ? "animate-spin" : "hover-spin-slow")}
               />
+            </Button>
+          )}
+          {onToggleExpand && foldLabel && (
+            <Button
+              size="sm"
+              variant="ghost"
+              className="h-8 w-8 shrink-0 p-0"
+              aria-expanded={expanded}
+              aria-label={foldLabel}
+              title={foldLabel}
+              onClick={onToggleExpand}
+            >
+              <FoldIcon className="h-4 w-4" />
             </Button>
           )}
         </div>
@@ -544,6 +601,7 @@ function ContainerRow({
   container,
   emptyValue,
   busyKey,
+  nested = false,
   onStop,
   onRestart,
   onRemove,
@@ -551,6 +609,8 @@ function ContainerRow({
   container: DockerContainer;
   emptyValue: string;
   busyKey: string | null;
+  /** Indented under a Compose project group. */
+  nested?: boolean;
   onStop: () => void;
   onRestart: () => void;
   onRemove: () => void;
@@ -567,7 +627,7 @@ function ContainerRow({
     <div
       className={cn(
         TABLE_GRID_CLASS,
-        "border-b border-border/60 px-4 py-2.5 text-left text-sm last:border-0",
+        "border-b border-border/80 px-4 py-2.5 text-left text-sm last:border-0",
         (menuOpen || rowBusy) && "bg-muted/70",
       )}
       style={{
@@ -575,49 +635,55 @@ function ContainerRow({
         columnGap: "var(--table-gap)",
       }}
     >
-      <RowActionsMenu
-        busy={rowBusy}
-        disabled={anyBusy && !rowBusy}
-        ariaLabel={t("docker.containers.col.actions")}
-        onOpenChange={setMenuOpen}
-        items={[
-          {
-            label: t("docker.containers.action.stop"),
-            disabled: !running || anyBusy,
-            icon: <Square className="h-3.5 w-3.5" />,
-            onSelect: onStop,
-          },
-          {
-            label: t("docker.containers.action.restart"),
-            disabled: anyBusy,
-            icon: <RotateCcw className="h-3.5 w-3.5" />,
-            onSelect: onRestart,
-          },
-          {
-            label: t("docker.containers.action.remove"),
-            disabled: anyBusy,
-            destructive: true,
-            icon: <Trash2 className="h-3.5 w-3.5" />,
-            onSelect: onRemove,
-          },
-        ]}
-      />
-      <div className="flex min-w-0 items-center gap-2 overflow-hidden">
+      <div className="flex min-w-0 items-center justify-start gap-0.5">
+        <RowActionsMenu
+          busy={rowBusy}
+          disabled={anyBusy && !rowBusy}
+          ariaLabel={t("docker.containers.col.actions")}
+          onOpenChange={setMenuOpen}
+          items={[
+            {
+              label: t("docker.containers.action.stop"),
+              disabled: !running || anyBusy,
+              icon: <Square className="h-3.5 w-3.5" />,
+              onSelect: onStop,
+            },
+            {
+              label: t("docker.containers.action.restart"),
+              disabled: anyBusy,
+              icon: <RotateCcw className="h-3.5 w-3.5" />,
+              onSelect: onRestart,
+            },
+            {
+              label: t("docker.containers.action.remove"),
+              disabled: anyBusy,
+              destructive: true,
+              icon: <Trash2 className="h-3.5 w-3.5" />,
+              onSelect: onRemove,
+            },
+          ]}
+        />
         <StatusGlyph state={container.state} />
+      </div>
+      <div
+        className={cn(
+          "flex min-w-0 items-center gap-1 overflow-hidden",
+          nested && "pl-4",
+        )}
+      >
         <Container className="h-5 w-5 shrink-0 text-muted-foreground" aria-hidden />
         <div className="min-w-0">
           <p className="truncate font-medium" title={container.names}>
             {container.names || emptyValue}
           </p>
-          <p className="truncate font-mono text-[11px] text-muted-foreground" title={container.id}>
-            {shortId(container.id)}
+          <p
+            className="truncate text-[11px] text-muted-foreground"
+            title={container.image || undefined}
+          >
+            {container.image || emptyValue}
           </p>
         </div>
       </div>
-      <TruncatedCell
-        value={container.image || emptyValue}
-        className="text-muted-foreground"
-      />
       <TruncatedCell
         value={container.runningFor || emptyValue}
         className="text-muted-foreground"
@@ -626,6 +692,89 @@ function ContainerRow({
       <TruncatedCell value={mem} className="tabular-nums text-muted-foreground" />
     </div>
   );
+}
+
+function ProjectGroupRow({
+  project,
+  containers,
+  expanded,
+  onToggle,
+}: {
+  project: string;
+  containers: DockerContainer[];
+  expanded: boolean;
+  onToggle: () => void;
+}) {
+  const { t } = useI18n();
+  const running = containers.filter(
+    (c) => c.state.toLowerCase() === "running",
+  ).length;
+  const Chevron = expanded ? ChevronDown : ChevronRight;
+
+  return (
+    <button
+      type="button"
+      className="flex w-full items-center gap-2 border-b border-border/80 bg-muted/40 px-4 py-2 text-left text-sm transition-colors hover:bg-muted/55"
+      aria-expanded={expanded}
+      aria-label={t("docker.containers.project.toggle", { name: project })}
+      onClick={onToggle}
+    >
+      <Chevron className="h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden />
+      <Layers className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
+      <span className="min-w-0 truncate font-medium" title={project}>
+        {project}
+      </span>
+      <span className="ml-auto shrink-0 text-xs text-muted-foreground">
+        {t("docker.containers.project.summary", {
+          running: String(running),
+          total: String(containers.length),
+        })}
+      </span>
+    </button>
+  );
+}
+
+type ContainerListItem =
+  | { kind: "lone"; container: DockerContainer }
+  | {
+      kind: "project";
+      project: string;
+      containers: DockerContainer[];
+    };
+
+/** Group Compose containers under their project while preserving sort order. */
+function groupContainersByProject(
+  sorted: DockerContainer[],
+): ContainerListItem[] {
+  const byProject = new Map<string, DockerContainer[]>();
+  const items: ContainerListItem[] = [];
+  const emitted = new Set<string>();
+
+  for (const c of sorted) {
+    const project = c.project?.trim() ?? "";
+    if (project) {
+      const list = byProject.get(project);
+      if (list) list.push(c);
+      else byProject.set(project, [c]);
+    }
+  }
+
+  for (const c of sorted) {
+    const project = c.project?.trim() ?? "";
+    if (!project) {
+      items.push({ kind: "lone", container: c });
+      continue;
+    }
+    if (emitted.has(project)) continue;
+    emitted.add(project);
+    items.push({
+      kind: "project",
+      project,
+      containers: byProject.get(project) ?? [c],
+    });
+  }
+
+  return items;
 }
 
 function ImageRow({
@@ -653,7 +802,7 @@ function ImageRow({
     <div
       className={cn(
         TABLE_GRID_CLASS,
-        "border-b border-border/60 px-4 py-2.5 text-left text-sm last:border-0",
+        "border-b border-border/80 px-4 py-2.5 text-left text-sm last:border-0",
         (menuOpen || rowBusy) && "bg-muted/70",
       )}
       style={{
@@ -856,9 +1005,9 @@ function DiskUsagePanel({
   }
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto">
+    <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-1 py-1">
       {hostDisks.length > 0 && (
-        <div className="min-w-0 space-y-2.5 rounded-lg border border-border/70 bg-muted/15 px-3 py-3">
+        <div className="min-w-0 space-y-2.5">
           <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
             {t("docker.df.host.section")}
           </p>
@@ -874,8 +1023,12 @@ function DiskUsagePanel({
         </div>
       )}
 
+      {hostDisks.length > 0 && bars.length > 0 && (
+        <div className="border-t border-border/50" role="separator" />
+      )}
+
       {bars.length > 0 && (
-        <div className="min-w-0 space-y-2.5 rounded-lg border border-border/70 bg-muted/15 px-3 py-3">
+        <div className="min-w-0 space-y-2.5">
           <div className="flex items-baseline justify-between gap-2">
             <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
               {t("docker.df.host.breakdown")}
@@ -908,15 +1061,24 @@ function TableShell({
   headers,
   children,
   empty,
+  actionsColPx = ACTIONS_COL_PX,
+  columnGapPx = TABLE_GAP_MIN_PX,
 }: {
   /** Content column widths only (actions column prepended internally). */
   colWidths: number[];
   headers: React.ReactNode[];
   children: React.ReactNode;
   empty?: React.ReactNode;
+  /** Width of the leading actions column (⋮ / ⋮+status). */
+  actionsColPx?: number;
+  /** Gap between columns (px). */
+  columnGapPx?: number;
 }) {
   const rootRef = useRef<HTMLDivElement>(null);
-  const hugCols = useMemo(() => hugGridCols(colWidths), [colWidths]);
+  const hugCols = useMemo(
+    () => hugGridCols(colWidths, actionsColPx),
+    [colWidths, actionsColPx],
+  );
   const [liveCols, setLiveCols] = useState(hugCols);
 
   useEffect(() => {
@@ -930,7 +1092,7 @@ function TableShell({
     const updateLayout = () => {
       const available = Math.max(0, el.clientWidth - TABLE_PAD_X_PX * 2);
       const gaps = Math.max(0, hugCols.length - 1);
-      const gapBudget = TABLE_GAP_MIN_PX * gaps;
+      const gapBudget = columnGapPx * gaps;
       const roomForCols = Math.max(0, available - gapBudget);
       const hugTotal = hugCols.reduce((sum, px) => sum + px, 0);
 
@@ -938,30 +1100,47 @@ function TableShell({
 
       if (hugTotal > roomForCols && hugTotal > 0) {
         // Shrink to fit — never introduce horizontal scrolling.
-        next[0] = ACTIONS_COL_PX;
-        const restHug = hugCols.slice(1);
-        const restHugTotal = restHug.reduce((s, w) => s + w, 0);
-        const roomAfterActions = Math.max(0, roomForCols - ACTIONS_COL_PX);
-        if (restHugTotal > 0) {
-          const scale = roomAfterActions / restHugTotal;
-          for (let i = 0; i < restHug.length; i++) {
-            next[i + 1] = Math.max(COL_MIN_PX, Math.floor(restHug[i] * scale));
+        if (actionsColPx > 0) {
+          next[0] = actionsColPx;
+          const restHug = hugCols.slice(1);
+          const restHugTotal = restHug.reduce((s, w) => s + w, 0);
+          const roomAfterActions = Math.max(0, roomForCols - actionsColPx);
+          if (restHugTotal > 0) {
+            const scale = roomAfterActions / restHugTotal;
+            for (let i = 0; i < restHug.length; i++) {
+              // Keep narrow status / action-adjacent cols from ballooning via COL_MIN.
+              const floor = Math.min(COL_MIN_PX, restHug[i]);
+              next[i + 1] = Math.max(floor, Math.floor(restHug[i] * scale));
+            }
           }
+        } else {
+          const scale = roomForCols / hugTotal;
+          next = hugCols.map((px) => {
+            const floor = Math.min(COL_MIN_PX, px);
+            return Math.max(floor, Math.floor(px * scale));
+          });
         }
         const used = next.reduce((s, w) => s + w, 0);
         const drift = roomForCols - used;
-        if (next.length > 1 && drift !== 0) {
-          next[next.length - 1] = Math.max(COL_MIN_PX, next[next.length - 1] + drift);
+        if (next.length > 0 && drift !== 0) {
+          const last = next.length - 1;
+          next[last] = Math.max(Math.min(COL_MIN_PX, next[last]), next[last] + drift);
         }
       } else {
-        // Leftover expands all data columns evenly (0=⋮ stays fixed).
+        // Leftover expands wider data columns; keep ⋮ / status hug widths fixed.
         const extra = roomForCols - hugTotal;
-        const growFrom = 1;
-        const growable = Math.max(0, next.length - growFrom);
-        if (extra > 0 && growable > 0) {
-          const each = Math.floor(extra / growable);
-          let rem = extra - each * growable;
-          for (let i = growFrom; i < next.length; i++) {
+        const growFrom = actionsColPx > 0 ? 1 : 0;
+        const growIdx: number[] = [];
+        for (let i = growFrom; i < next.length; i++) {
+          if (hugCols[i] > 72) growIdx.push(i);
+        }
+        if (growIdx.length === 0) {
+          for (let i = growFrom; i < next.length; i++) growIdx.push(i);
+        }
+        if (extra > 0 && growIdx.length > 0) {
+          const each = Math.floor(extra / growIdx.length);
+          let rem = extra - each * growIdx.length;
+          for (const i of growIdx) {
             next[i] += each + (rem > 0 ? 1 : 0);
             if (rem > 0) rem -= 1;
           }
@@ -975,14 +1154,14 @@ function TableShell({
     const ro = new ResizeObserver(updateLayout);
     ro.observe(el);
     return () => ro.disconnect();
-  }, [hugCols]);
+  }, [hugCols, actionsColPx, columnGapPx]);
 
   if (empty) return <>{empty}</>;
 
   const gridTemplate = liveCols.map((px) => `${px}px`).join(" ");
   const vars = {
     ["--table-cols" as string]: gridTemplate,
-    ["--table-gap" as string]: `${TABLE_GAP_MIN_PX}px`,
+    ["--table-gap" as string]: `${columnGapPx}px`,
   } as React.CSSProperties;
 
   const rowGridStyle = {
@@ -993,13 +1172,13 @@ function TableShell({
   return (
     <div
       ref={rootRef}
-      className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-lg border border-border/60"
+      className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-lg border border-border bg-card"
       style={vars}
     >
       <div
         className={cn(
           TABLE_GRID_CLASS,
-          "shrink-0 items-stretch border-b border-border/60 bg-muted/30 px-4 text-left text-xs font-medium text-muted-foreground",
+          "shrink-0 items-stretch border-b border-border bg-muted/50 px-4 text-left text-xs font-medium text-foreground/75",
         )}
         style={rowGridStyle}
       >
@@ -1176,7 +1355,7 @@ function DockerHostSelector({
     >
       <div
         ref={circleRef}
-        className="h-[min(100cqw,100cqh)] w-[min(100cqw,100cqh)] shrink-0"
+        className="relative h-[min(100cqw,100cqh)] w-[min(100cqw,100cqh)] shrink-0 [container-type:size]"
       >
         {selectedHost ? (
           <HostCircle
@@ -1184,7 +1363,6 @@ function DockerHostSelector({
             icon={Server}
             title={selectedHost.alias}
             subtitle={hostEndpoint(selectedHost)}
-            onClick={() => setPickerOpen((v) => !v)}
           />
         ) : (
           <HostCircle
@@ -1192,9 +1370,20 @@ function DockerHostSelector({
             icon={Monitor}
             title="127.0.0.1"
             subtitle={t("docker.host.localSubtitle")}
-            onClick={() => setPickerOpen((v) => !v)}
           />
         )}
+        <div className="pointer-events-none absolute inset-0 flex items-end justify-center pb-[20%]">
+          <Button
+            type="button"
+            variant="secondary"
+            className="pointer-events-auto h-[clamp(2.05rem,8.5cqw,2.85rem)] max-w-[76%] truncate px-[clamp(0.95rem,4.2cqw,1.5rem)] py-0 text-[clamp(0.85rem,3.6cqw,1.05rem)] font-medium leading-none shadow-sm [&>span]:-translate-y-px"
+            aria-expanded={pickerOpen}
+            aria-haspopup="listbox"
+            onClick={() => setPickerOpen((v) => !v)}
+          >
+            {t("docker.host.select")}
+          </Button>
+        </div>
       </div>
       {menu}
     </div>
@@ -1207,7 +1396,9 @@ export function Docker() {
   const loading = useDockerStore((s) => s.loading);
   const refreshing = useDockerStore((s) => s.refreshing);
   const error = useDockerStore((s) => s.error);
+  const hasLoaded = useDockerStore((s) => s.hasLoaded);
   const load = useDockerStore((s) => s.load);
+  const pollLive = useDockerStore((s) => s.pollLive);
   const selectedHost = useDockerStore((s) => s.selectedHost);
   const setSelectedHost = useDockerStore((s) => s.setSelectedHost);
   const hostsLoad = useHostStore((s) => s.load);
@@ -1218,10 +1409,16 @@ export function Docker() {
   const [renameRepo, setRenameRepo] = useState("");
   const [renameTag, setRenameTag] = useState("latest");
   const [containerSortKey, setContainerSortKey] =
-    useState<ContainerSortKey>("created");
-  const [containerSortDir, setContainerSortDir] = useState<SortDir>("desc");
+    useState<ContainerSortKey>("status");
+  const [containerSortDir, setContainerSortDir] = useState<SortDir>("asc");
   const [imageSortKey, setImageSortKey] = useState<ImageSortKey>("created");
   const [imageSortDir, setImageSortDir] = useState<SortDir>("desc");
+  /** Projects in this set are collapsed. */
+  const [collapsedProjects, setCollapsedProjects] = useState<Set<string>>(
+    () => new Set(),
+  );
+  const [containersExpanded, setContainersExpanded] = useState(true);
+  const [imagesExpanded, setImagesExpanded] = useState(true);
 
   useEffect(() => {
     if (isTauri()) void hostsLoad().catch(() => undefined);
@@ -1230,6 +1427,40 @@ export function Docker() {
   useEffect(() => {
     void load(selectedHost);
   }, [load, selectedHost]);
+
+  // High-frequency live poll (status + CPU/mem) without spinner flicker.
+  useEffect(() => {
+    if (!isTauri() || !hasLoaded) return;
+
+    let cancelled = false;
+    let inFlight = false;
+
+    const tick = async () => {
+      if (cancelled || inFlight) return;
+      if (typeof document !== "undefined" && document.hidden) return;
+      inFlight = true;
+      try {
+        await pollLive(selectedHost);
+      } finally {
+        inFlight = false;
+      }
+    };
+
+    const id = window.setInterval(() => {
+      void tick();
+    }, DOCKER_LIVE_POLL_MS);
+
+    const onVisibility = () => {
+      if (!document.hidden) void tick();
+    };
+    document.addEventListener("visibilitychange", onVisibility);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(id);
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
+  }, [hasLoaded, pollLive, selectedHost]);
 
   const busy = loading || refreshing;
   const auth = dockerAuthParams(selectedHost);
@@ -1279,6 +1510,24 @@ export function Docker() {
     return rows;
   }, [data.containers, containerSortKey, containerSortDir]);
 
+  const groupedContainers = useMemo(
+    () => groupContainersByProject(sortedContainers),
+    [sortedContainers],
+  );
+
+  useEffect(() => {
+    setCollapsedProjects(new Set());
+  }, [selectedHost?.id]);
+
+  const toggleProject = useCallback((project: string) => {
+    setCollapsedProjects((prev) => {
+      const next = new Set(prev);
+      if (next.has(project)) next.delete(project);
+      else next.add(project);
+      return next;
+    });
+  }, []);
+
   const sortedImages = useMemo(() => {
     const rows = [...data.images];
     rows.sort((a, b) => compareImages(a, b, imageSortKey));
@@ -1289,22 +1538,19 @@ export function Docker() {
   const emptyValue = t("common.emptyValue");
 
   const containersColWidths = useMemo(() => {
-    // status (20) + gap (8) + container icon (20) + gap (8)
-    const nameChrome = 20 + 8 + 20 + 8;
+    // icon (20) + gap (4)
+    const nameChrome = 20 + 4;
     const nameValues = sortedContainers.flatMap((c) => [
       c.names || emptyValue,
-      shortId(c.id),
+      c.image || emptyValue,
     ]);
     return [
+      CONTAINER_STATUS_COL_PX,
       hugColumnPx({
         values: nameValues,
         header: t("docker.containers.col.name"),
         chromePx: nameChrome,
         fontSizePx: 14,
-      }),
-      hugColumnPx({
-        values: sortedContainers.map((c) => c.image || emptyValue),
-        header: t("docker.containers.col.image"),
       }),
       hugColumnPx({
         values: sortedContainers.map((c) => c.runningFor || emptyValue),
@@ -1448,45 +1694,83 @@ export function Docker() {
         </div>
       )}
 
-      {/* Top: host selector (~25%) + containers (~75%), same row height */}
+      {/* Left: host + disk; Right: containers + images (foldable) */}
       <div className="flex min-h-0 flex-1 gap-3 overflow-hidden">
-        <DockerHostSelector
-          selectedHost={selectedHost}
-          onSelectLocal={() => setSelectedHost(null)}
-          onSelectHost={(host) => setSelectedHost(host)}
-        />
-
-        <Card className="flex min-h-0 min-w-0 flex-[3] flex-col overflow-hidden">
-          <PanelHeader
-            title={t("docker.containers.title")}
-            summary={
-              error
-                ? undefined
-                : loading && !hasData
-                  ? t("docker.loading")
-                  : t("docker.containers.summary", { count: data.containers.length })
-            }
-            loading={busy}
-            onRefresh={() => void load(selectedHost)}
-            refreshLabel={t("docker.refresh")}
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-3 overflow-hidden">
+          <DockerHostSelector
+            selectedHost={selectedHost}
+            onSelectLocal={() => setSelectedHost(null)}
+            onSelectHost={(host) => setSelectedHost(host)}
           />
-          <CardContent className="flex min-h-0 flex-1 flex-col overflow-hidden pt-0">
-            <TableShell
+          <Card className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+            <PanelHeader
+              title={t("docker.df.title")}
+              summary={
+                error
+                  ? undefined
+                  : loading && data.diskUsage.length === 0 && data.hostDisks.length === 0
+                    ? t("docker.loading")
+                    : undefined
+              }
+              loading={busy}
+              onRefresh={() => void load(selectedHost)}
+              refreshLabel={t("docker.refresh")}
+            />
+            <CardContent className="flex min-h-0 flex-1 flex-col overflow-hidden pt-0">
+            <DiskUsagePanel
+              hostDisks={data.hostDisks}
+              rows={data.diskUsage}
+              loading={loading}
+              emptyValue={emptyValue}
+            />
+            </CardContent>
+          </Card>
+        </div>
+
+        <div className="flex min-h-0 min-w-0 flex-[3] flex-col gap-3 overflow-hidden">
+          <Card
+            className={cn(
+              "flex min-w-0 flex-col overflow-hidden",
+              containersExpanded ? "min-h-0 flex-1" : "shrink-0",
+            )}
+          >
+            <PanelHeader
+              title={t("docker.containers.title")}
+              summary={
+                error
+                  ? undefined
+                  : loading && !hasData
+                    ? t("docker.loading")
+                    : t("docker.containers.summary", { count: data.containers.length })
+              }
+              loading={busy}
+              onRefresh={() => void load(selectedHost)}
+              refreshLabel={t("docker.refresh")}
+              expanded={containersExpanded}
+              onToggleExpand={() => setContainersExpanded((v) => !v)}
+              expandLabel={t("docker.panel.expand")}
+              collapseLabel={t("docker.panel.collapse")}
+            />
+            {containersExpanded ? (
+              <CardContent className="flex min-h-0 flex-1 flex-col overflow-hidden pt-0">
+                <TableShell
               colWidths={containersColWidths}
+              actionsColPx={CONTAINER_ACTIONS_COL_PX}
+              columnGapPx={CONTAINER_TABLE_GAP_PX}
               headers={[
-                null,
+                <SortHeader
+                  key="status"
+                  label={t("docker.containers.col.status")}
+                  col="status"
+                  sortKey={containerSortKey}
+                  sortDir={containerSortDir}
+                  onSort={toggleContainerSort}
+                  labelSrOnly
+                />,
                 <SortHeader
                   key="name"
                   label={t("docker.containers.col.name")}
                   col="name"
-                  sortKey={containerSortKey}
-                  sortDir={containerSortDir}
-                  onSort={toggleContainerSort}
-                />,
-                <SortHeader
-                  key="image"
-                  label={t("docker.containers.col.image")}
-                  col="image"
                   sortKey={containerSortKey}
                   sortDir={containerSortDir}
                   onSort={toggleContainerSort}
@@ -1528,82 +1812,115 @@ export function Docker() {
                 ) : undefined
               }
             >
-              {sortedContainers.map((container) => (
-                <ContainerRow
-                  key={container.id}
-                  container={container}
-                  emptyValue={emptyValue}
-                  busyKey={busyKey}
-                  onStop={() =>
-                    setConfirm({
-                      kind: "stop",
-                      id: container.id,
-                      name: container.names,
-                    })
-                  }
-                  onRestart={() =>
-                    setConfirm({
-                      kind: "restart",
-                      id: container.id,
-                      name: container.names,
-                    })
-                  }
-                  onRemove={() =>
-                    setConfirm({
-                      kind: "remove-container",
-                      id: container.id,
-                      name: container.names,
-                    })
-                  }
-                />
-              ))}
+              {groupedContainers.map((item) => {
+                if (item.kind === "lone") {
+                  const container = item.container;
+                  return (
+                    <ContainerRow
+                      key={container.id}
+                      container={container}
+                      emptyValue={emptyValue}
+                      busyKey={busyKey}
+                      onStop={() =>
+                        setConfirm({
+                          kind: "stop",
+                          id: container.id,
+                          name: container.names,
+                        })
+                      }
+                      onRestart={() =>
+                        setConfirm({
+                          kind: "restart",
+                          id: container.id,
+                          name: container.names,
+                        })
+                      }
+                      onRemove={() =>
+                        setConfirm({
+                          kind: "remove-container",
+                          id: container.id,
+                          name: container.names,
+                        })
+                      }
+                    />
+                  );
+                }
+
+                const expanded = !collapsedProjects.has(item.project);
+                return (
+                  <div key={`project:${item.project}`}>
+                    <ProjectGroupRow
+                      project={item.project}
+                      containers={item.containers}
+                      expanded={expanded}
+                      onToggle={() => toggleProject(item.project)}
+                    />
+                    {expanded
+                      ? item.containers.map((container) => (
+                          <ContainerRow
+                            key={container.id}
+                            container={container}
+                            emptyValue={emptyValue}
+                            busyKey={busyKey}
+                            nested
+                            onStop={() =>
+                              setConfirm({
+                                kind: "stop",
+                                id: container.id,
+                                name: container.names,
+                              })
+                            }
+                            onRestart={() =>
+                              setConfirm({
+                                kind: "restart",
+                                id: container.id,
+                                name: container.names,
+                              })
+                            }
+                            onRemove={() =>
+                              setConfirm({
+                                kind: "remove-container",
+                                id: container.id,
+                                name: container.names,
+                              })
+                            }
+                          />
+                        ))
+                      : null}
+                  </div>
+                );
+              })}
             </TableShell>
-          </CardContent>
-        </Card>
-      </div>
+              </CardContent>
+            ) : null}
+          </Card>
 
-      {/* Bottom: disk usage (~25%) + images (~75%) */}
-      <div className="flex min-h-0 flex-1 gap-3 overflow-hidden">
-        <Card className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
-          <PanelHeader
-            title={t("docker.df.title")}
-            summary={
-              error
-                ? undefined
-                : loading && data.diskUsage.length === 0 && data.hostDisks.length === 0
-                  ? t("docker.loading")
-                  : undefined
-            }
-            loading={busy}
-            onRefresh={() => void load(selectedHost)}
-            refreshLabel={t("docker.refresh")}
-          />
-          <CardContent className="flex min-h-0 flex-1 flex-col overflow-hidden pt-0">
-            <DiskUsagePanel
-              hostDisks={data.hostDisks}
-              rows={data.diskUsage}
-              loading={loading}
-              emptyValue={emptyValue}
+          <Card
+            className={cn(
+              "flex min-w-0 flex-col overflow-hidden",
+              imagesExpanded ? "min-h-0 flex-1" : "shrink-0",
+            )}
+          >
+            <PanelHeader
+              title={t("docker.images.title")}
+              summary={
+                error
+                  ? undefined
+                  : loading && !hasData
+                    ? t("docker.loading")
+                    : t("docker.images.summary", { count: data.images.length })
+              }
+              loading={busy}
+              onRefresh={() => void load(selectedHost)}
+              refreshLabel={t("docker.refresh")}
+              expanded={imagesExpanded}
+              onToggleExpand={() => setImagesExpanded((v) => !v)}
+              expandLabel={t("docker.panel.expand")}
+              collapseLabel={t("docker.panel.collapse")}
             />
-          </CardContent>
-        </Card>
-
-        <Card className="flex min-h-0 min-w-0 flex-[3] flex-col overflow-hidden">
-          <PanelHeader
-            title={t("docker.images.title")}
-            summary={
-              error
-                ? undefined
-                : loading && !hasData
-                  ? t("docker.loading")
-                  : t("docker.images.summary", { count: data.images.length })
-            }
-            loading={busy}
-            onRefresh={() => void load(selectedHost)}
-            refreshLabel={t("docker.refresh")}
-          />
-          <CardContent className="flex min-h-0 flex-1 flex-col overflow-hidden pt-0">
-            <TableShell
+            {imagesExpanded ? (
+              <CardContent className="flex min-h-0 flex-1 flex-col overflow-hidden pt-0">
+                <TableShell
               colWidths={imagesColWidths}
               headers={[
                 null,
@@ -1691,8 +2008,10 @@ export function Docker() {
                 );
               })}
             </TableShell>
-          </CardContent>
-        </Card>
+              </CardContent>
+            ) : null}
+          </Card>
+        </div>
       </div>
 
       <CenterDialog
