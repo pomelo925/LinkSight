@@ -145,7 +145,10 @@ where
         serde_json::Value::Object(map) => map
             .iter()
             .map(|(k, v)| {
-                let val = v.as_str().map(str::to_string).unwrap_or_else(|| v.to_string());
+                let val = v
+                    .as_str()
+                    .map(str::to_string)
+                    .unwrap_or_else(|| v.to_string());
                 format!("{k}={val}")
             })
             .collect::<Vec<_>>()
